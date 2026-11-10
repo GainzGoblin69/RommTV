@@ -71,6 +71,11 @@ import com.swordfish.lemuroid.lib.romm.RommClient
 import com.swordfish.lemuroid.lib.romm.RommGameFiles
 import com.swordfish.lemuroid.lib.romm.RommRomDetail
 import com.swordfish.lemuroid.lib.romm.RommSave
+import com.swordfish.lemuroid.lib.romm.RommState
+import com.swordfish.lemuroid.lib.core.CoresSelection
+import com.swordfish.lemuroid.lib.library.CoreID
+import com.swordfish.lemuroid.lib.library.GameSystem
+import com.swordfish.lemuroid.lib.saves.StatesManager
 import com.swordfish.lemuroid.lib.romm.RommSession
 import dagger.android.AndroidInjection
 import kotlinx.coroutines.Dispatchers
@@ -97,6 +102,17 @@ class GameDetailActivity : ComponentActivity() {
 
     @Inject
     lateinit var gameLaunchTaskHandler: GameLaunchTaskHandler
+
+    @Inject
+    lateinit var statesManager: StatesManager
+
+    @Inject
+    lateinit var coresSelection: CoresSelection
+
+    private val sync by lazy { RommSync(this, statesManager) }
+
+    /** When the game was started, for reporting play time to RomM. */
+    private var launchedAt = 0L
 
     private lateinit var client: RommClient
 
@@ -128,7 +144,7 @@ class GameDetailActivity : ComponentActivity() {
     }
 
     private fun refreshOnTv() {
-        val romId = game?.let { RommSaves.romId(it) } ?: return
+        val romId = game?.let { RommSync.romId(it) } ?: return
         val files = RommGameFiles(this)
         onTv = files.isDownloaded(romId)
         onUsb = onTv && files.isOnUsb(romId)
@@ -149,7 +165,7 @@ class GameDetailActivity : ComponentActivity() {
     }
 
     private suspend fun refreshDetail() {
-        val romId = game?.let { RommSaves.romId(it) } ?: return
+        val romId = game?.let { RommSync.romId(it) } ?: return
         val result = withContext(Dispatchers.IO) { runCatching { client.romDetail(romId) } }
         result.onSuccess {
             detail = it
@@ -164,12 +180,93 @@ class GameDetailActivity : ComponentActivity() {
         earned = withContext(Dispatchers.IO) { runCatching { client.earnedAchievements(raId) }.getOrDefault(emptyMap()) }
     }
 
-    private fun play(loadSave: Boolean) {
-        val current = game ?: return
-        if (busy) return
-        showSaves = false
+    private fun startGame(
+        current: Game,
+        loadSave: Boolean,
+    ) {
+        launchedAt = System.currentTimeMillis()
         gameLauncher.launchGameAsync(this, current, loadSave, true)
     }
+
+    /**
+     * Play: first ask RomM whether the TV's save is current. A newer RomM save (from the website or another
+     * device) is downloaded and the game starts from it; a newer TV save is uploaded; if both changed,
+     * the player chooses. Without a connection the game just starts from the TV's save.
+     */
+    private fun play(loadSave: Boolean) {
+        val current = game ?: return
+        val info = detail
+        if (busy) return
+        showSaves = false
+        if (info == null) {
+            startGame(current, loadSave)
+            return
+        }
+        busy = true
+        status = "Syncing your save with RomM…"
+        lifecycleScope.launch {
+            val before = withContext(Dispatchers.IO) { runCatching { sync.beforePlay(current, info) } }
+            val result =
+                before.getOrElse {
+                    Timber.e(it, "Sync before play failed")
+                    busy = false
+                    status = syncProblem(it)
+                    startGame(current, loadSave)
+                    return@launch
+                }
+            var downloaded = result.downloaded
+            var completed = result.completed
+            var failed = result.failed
+            if (result.conflict != null) {
+                val useRomm = askConflict(result)
+                val resolved = withContext(Dispatchers.IO) { runCatching { sync.resolveConflict(current, result, useRomm) } }
+                resolved.onSuccess {
+                    downloaded = it
+                    completed++
+                }.onFailure {
+                    failed++
+                    status = "Couldn't finish syncing: ${it.message}. Playing the TV's save."
+                }
+            }
+            withContext(Dispatchers.IO) { sync.finishBeforePlay(result, completed, failed) }
+            busy = false
+            status = result.message ?: if (downloaded) "Loaded your RomM save." else ""
+            // A save that just came from RomM is newer than the TV's last position, so start the game from it
+            startGame(current, loadSave && !downloaded)
+        }
+    }
+
+    /** RomM and the TV both changed the save since they last agreed: the player picks one. */
+    private suspend fun askConflict(before: RommSync.BeforePlay): Boolean =
+        kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+            val tvTime = before.local?.updatedAtMillis?.let { java.text.SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(it) } ?: "unknown"
+            val rommTime = GameDates.dateTime(before.conflict?.serverUpdatedAt)
+            var answered = false
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Which save do you want?")
+                .setMessage(
+                    "This game's save changed on the TV and in RomM since they last matched.\n\n" +
+                        "TV save: $tvTime\nRomM save: $rommTime\n\n" +
+                        "The one you don't pick is kept in RomM's save history.",
+                )
+                .setPositiveButton("Use RomM save") { _, _ ->
+                    answered = true
+                    cont.resumeWith(Result.success(true))
+                }
+                .setNegativeButton("Keep TV save") { _, _ ->
+                    answered = true
+                    cont.resumeWith(Result.success(false))
+                }
+                .setOnDismissListener { if (!answered) cont.resumeWith(Result.success(false)) }
+                .show()
+        }
+
+    private fun syncProblem(e: Throwable): String =
+        if ((e as? com.swordfish.lemuroid.lib.romm.RommException)?.code == 400) {
+            "Sync is turned off for this TV in RomM (Devices). Playing the TV's save."
+        } else {
+            "Couldn't sync with RomM (${e.message}). Playing the TV's save."
+        }
 
     private fun playWithSave(save: RommSave) {
         val current = game ?: return
@@ -178,18 +275,44 @@ class GameDetailActivity : ComponentActivity() {
         showSaves = false
         status = "Getting the save from RomM…"
         lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { RommSaves.useServerSave(applicationContext, current, save) } }
+            val result = withContext(Dispatchers.IO) { runCatching { sync.useServerSave(current, save) } }
             busy = false
             result.onSuccess {
                 status = ""
                 // Start from the save itself, not from where the TV last left off
-                gameLauncher.launchGameAsync(this@GameDetailActivity, current, false, true)
+                startGame(current, false)
             }.onFailure {
                 Timber.e(it, "Couldn't fetch save")
                 status = "Couldn't get that save from RomM: ${it.message}"
             }
         }
     }
+
+    /** A RomM save state: it becomes the TV's resume point, and the game starts there. */
+    private fun playWithState(state: RommState) {
+        val current = game ?: return
+        if (busy) return
+        busy = true
+        showSaves = false
+        status = "Getting the save state from RomM…"
+        lifecycleScope.launch {
+            val result =
+                withContext(Dispatchers.IO) {
+                    runCatching { sync.useServerState(current, coreFor(current), state) }
+                }
+            busy = false
+            result.onSuccess {
+                status = ""
+                startGame(current, true)
+            }.onFailure {
+                Timber.e(it, "Couldn't fetch state")
+                status = "Couldn't get that save state from RomM: ${it.message}"
+            }
+        }
+    }
+
+    private suspend fun coreFor(game: Game): CoreID =
+        coresSelection.getCoreConfigForSystem(GameSystem.findById(game.systemId)).coreID
 
     private fun toggleFavorite() {
         val current = game ?: return
@@ -200,7 +323,7 @@ class GameDetailActivity : ComponentActivity() {
     }
 
     private fun removeFromTv() {
-        val romId = game?.let { RommSaves.romId(it) } ?: return
+        val romId = game?.let { RommSync.romId(it) } ?: return
         lifecycleScope.launch {
             withContext(Dispatchers.IO) { RommGameFiles(applicationContext).remove(romId) }
             onTv = false
@@ -220,13 +343,24 @@ class GameDetailActivity : ComponentActivity() {
             runCatching { gameLaunchTaskHandler.handleGameFinish(false, this@GameDetailActivity, resultCode, data) }
             ChannelUpdateWork.enqueue(applicationContext)
             val current = game ?: return@launch
-            if (resultCode == Activity.RESULT_OK) {
-                val upload = withContext(Dispatchers.IO) { runCatching { RommSaves.uploadAfterPlay(applicationContext, current) } }
-                upload.onSuccess { if (it) status = "Your save was uploaded to RomM (slot \"${RommClient.SAVE_SLOT}\")." }
-                    .onFailure {
-                        Timber.e(it, "Save upload failed")
-                        status = "Your save is on this TV, but uploading it to RomM failed: ${it.message}"
+            val info = detail
+            if (resultCode == Activity.RESULT_OK && info != null) {
+                // Sync the save and states, and report how long you played
+                val end = System.currentTimeMillis()
+                val duration =
+                    data?.getLongExtra(BaseGameActivity.PLAY_GAME_RESULT_SESSION_DURATION, 0L)?.takeIf { it > 0 }
+                        ?: (end - launchedAt)
+                val start = if (launchedAt > 0) launchedAt else end - duration
+                status = "Syncing with RomM…"
+                val note =
+                    withContext(Dispatchers.IO) {
+                        runCatching { sync.afterPlay(current, info, coreFor(current), start, end, duration) }
+                            .getOrElse {
+                                Timber.e(it, "Sync after play failed")
+                                "Couldn't sync with RomM after playing: ${it.message}"
+                            }
                     }
+                status = note ?: ""
             }
             refreshOnTv()
             refreshDetail()
@@ -406,7 +540,7 @@ class GameDetailActivity : ComponentActivity() {
             }
         }
 
-        if (showSaves && current != null) SavePicker(info?.saves.orEmpty())
+        if (showSaves && current != null) SavePicker(info?.saves.orEmpty(), info?.states.orEmpty(), info?.id)
         shownAchievement?.let { AchievementDetail(it) }
     }
 
@@ -487,7 +621,12 @@ class GameDetailActivity : ComponentActivity() {
     private fun earnedCount(info: RommRomDetail) = info.achievements.count { isEarned(it) }
 
     @Composable
-    private fun SavePicker(saves: List<RommSave>) {
+    private fun SavePicker(
+        saves: List<RommSave>,
+        states: List<RommState>,
+        romId: Int?,
+    ) {
+        val fromTv = remember(romId) { romId?.let { sync.uploadedStateIds(it) } ?: emptySet() }
         val first = remember { FocusRequester() }
         LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
         Dialog(onDismissRequest = { showSaves = false }) {
@@ -506,19 +645,37 @@ class GameDetailActivity : ComponentActivity() {
                     modifier = Modifier.heightIn(max = 340.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    SaveRow("Continue on this TV", "Picks up where you last stopped on this TV", Modifier.focusRequester(first)) { play(true) }
+                    SaveRow("Continue", "Syncs with RomM, then picks up where you left off", Modifier.focusRequester(first)) { play(true) }
+                    if (saves.isNotEmpty()) PickerHeading("IN-GAME SAVES")
                     saves.forEach { save ->
                         SaveRow(
                             save.fileName,
-                            listOfNotNull(save.slot?.let { "Slot: $it" }, date(save.updatedAt), size(save.size)).joinToString("   ·   "),
+                            listOfNotNull(
+                                save.slot?.let { "Slot: $it" },
+                                save.emulator,
+                                date(save.updatedAt),
+                                size(save.size),
+                            ).joinToString("   ·   "),
                         ) { playWithSave(save) }
+                    }
+                    if (states.isNotEmpty()) PickerHeading("SAVE STATES")
+                    states.forEach { state ->
+                        SaveRow(
+                            state.fileName,
+                            listOfNotNull(
+                                if (state.id in fromTv) "From this TV" else state.emulator?.let { "From the web player ($it)" },
+                                date(state.updatedAt),
+                                size(state.size),
+                            ).joinToString("   ·   "),
+                        ) { playWithState(state) }
                     }
                 }
                 Text(
-                    if (saves.isEmpty()) {
-                        "No saves in RomM for this game yet. Saves made on this TV upload after you play."
+                    if (saves.isEmpty() && states.isEmpty()) {
+                        "Nothing in RomM for this game yet. Your saves and save states upload after you play."
                     } else {
-                        "A RomM save replaces this TV's save for the game. The TV's old save is kept as a backup file."
+                        "In-game saves replace this TV's save (the old one is kept as a backup). A save state starts the game " +
+                            "exactly where it was made; states from the web player may not load if its emulator version differs."
                     },
                     color = Quiet,
                     fontSize = 12.sp,
@@ -526,6 +683,11 @@ class GameDetailActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    @Composable
+    private fun PickerHeading(text: String) {
+        Text(text, color = Quiet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp, modifier = Modifier.padding(top = 6.dp))
     }
 
     @Composable

@@ -48,6 +48,11 @@ class RommSession(context: Context) {
             .commit()
     }
 
+    /** The id RomM gave this TV as a device (for sync), when it wasn't set at sign-in. */
+    fun saveDeviceId(id: String) {
+        prefs().edit().putString(KEY_DEVICE_ID, id).commit()
+    }
+
     fun signOut() {
         prefs().edit().remove(KEY_TOKEN).remove(KEY_DEVICE_ID).commit()
     }

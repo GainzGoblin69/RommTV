@@ -5,6 +5,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -63,6 +66,48 @@ data class RommSave(
     val updatedAt: String,
 )
 
+data class RommState(
+    val id: Int,
+    val fileName: String,
+    val size: Long,
+    val emulator: String?,
+    val updatedAt: String,
+)
+
+/** One step RomM's sync asks this device to take for a save slot. */
+data class RommSyncOp(
+    val action: String,
+    val romId: Int,
+    val saveId: Int?,
+    val fileName: String,
+    val slot: String?,
+    val emulator: String?,
+    val reason: String?,
+    val serverUpdatedAt: String?,
+    val serverHash: String?,
+)
+
+data class RommSyncPlan(val sessionId: Int, val operations: List<RommSyncOp>)
+
+/** A save as this device holds it, for sync negotiation. */
+data class RommLocalSave(
+    val romId: Int,
+    val fileName: String,
+    val slot: String,
+    val emulator: String,
+    val md5: String,
+    val updatedAtMillis: Long,
+    val size: Long,
+)
+
+data class RommPlaySession(
+    val romId: Int,
+    val slot: String?,
+    val startMillis: Long,
+    val endMillis: Long,
+    val durationMillis: Long,
+)
+
 data class RommAchievement(
     val badgeId: String?,
     val title: String,
@@ -96,7 +141,9 @@ data class RommRomDetail(
     val screenshots: List<String>,
     val achievements: List<RommAchievement>,
     val saves: List<RommSave>,
-    val statesCount: Int,
+    val states: List<RommState>,
+    val platformSlug: String,
+    val platformFsSlug: String,
     val lastPlayed: String?,
     val sizeBytes: Long,
 )
@@ -427,7 +474,21 @@ class RommClient(private val session: RommSession) {
                         updatedAt = v.optString("updated_at"),
                     )
                 }.sortedByDescending { it.updatedAt },
-            statesCount = r.optJSONArray("user_states")?.length() ?: 0,
+            states =
+                (r.optJSONArray("user_states") ?: JSONArray()).let { a ->
+                    (0 until a.length()).map { i ->
+                        val v = a.getJSONObject(i)
+                        RommState(
+                            id = v.getInt("id"),
+                            fileName = v.optString("file_name"),
+                            size = v.optLong("file_size_bytes"),
+                            emulator = v.optStringOrNull("emulator"),
+                            updatedAt = v.optString("updated_at"),
+                        )
+                    }.sortedByDescending { it.updatedAt }
+                },
+            platformSlug = r.optString("platform_slug"),
+            platformFsSlug = r.optString("platform_fs_slug"),
             lastPlayed = r.optJSONObject("rom_user")?.optStringOrNull("last_played"),
             sizeBytes = r.optLong("fs_size_bytes"),
         )
@@ -458,6 +519,214 @@ class RommClient(private val session: RommSession) {
         saveId: Int,
         dest: File,
     ) = download(url("api/saves").addPathSegment(saveId.toString()).addPathSegment("content").build(), dest)
+
+    // ---- RomM's device sync: the server compares this TV's saves with its own and says what to do
+
+    /** Registers this TV as a device in RomM (only needed if the sign-in didn't already). Returns its id. */
+    fun registerDevice(
+        name: String,
+        appVersion: String,
+    ): String {
+        val body =
+            JSONObject()
+                .put("name", name)
+                .put("platform", "android-tv")
+                .put("client", "romm-tv")
+                .put("client_version", appVersion)
+                .put("allow_existing", true)
+        val request = authed(Request.Builder().url(url("api/devices").build())).post(body.toString().toRequestBody(JSON)).build()
+        return execute(request).use { JSONObject(it.body!!.string()).getString("id") }
+    }
+
+    fun negotiate(
+        deviceId: String,
+        romId: Int,
+        saves: List<RommLocalSave>,
+        emulators: List<String>,
+    ): RommSyncPlan {
+        val body =
+            JSONObject()
+                .put("device_id", deviceId)
+                .put("rom_ids", JSONArray(listOf(romId)))
+                .put("emulators", JSONArray(emulators))
+                .put(
+                    "saves",
+                    JSONArray(
+                        saves.map {
+                            JSONObject()
+                                .put("rom_id", it.romId)
+                                .put("file_name", it.fileName)
+                                .put("slot", it.slot)
+                                .put("emulator", it.emulator)
+                                .put("content_hash", it.md5)
+                                .put("updated_at", iso(it.updatedAtMillis))
+                                .put("file_size_bytes", it.size)
+                        },
+                    ),
+                )
+        val request = authed(Request.Builder().url(url("api/sync/negotiate").build())).post(body.toString().toRequestBody(JSON)).build()
+        val json = execute(request).use { JSONObject(it.body!!.string()) }
+        val ops = json.optJSONArray("operations") ?: JSONArray()
+        return RommSyncPlan(
+            sessionId = json.getInt("session_id"),
+            operations =
+                (0 until ops.length()).map { i ->
+                    val o = ops.getJSONObject(i)
+                    RommSyncOp(
+                        action = o.getString("action"),
+                        romId = o.getInt("rom_id"),
+                        saveId = if (o.isNull("save_id")) null else o.optInt("save_id"),
+                        fileName = o.optString("file_name"),
+                        slot = o.optStringOrNull("slot"),
+                        emulator = o.optStringOrNull("emulator"),
+                        reason = o.optStringOrNull("reason"),
+                        serverUpdatedAt = o.optStringOrNull("server_updated_at"),
+                        serverHash = o.optStringOrNull("server_content_hash"),
+                    )
+                },
+        )
+    }
+
+    /** Downloads a save as this device's copy (RomM records which version the TV now holds). */
+    fun downloadSaveForDevice(
+        saveId: Int,
+        deviceId: String,
+        sessionId: Int,
+        dest: File,
+    ) = download(
+        url("api/saves").addPathSegment(saveId.toString()).addPathSegment("content")
+            .addQueryParameter("device_id", deviceId)
+            .addQueryParameter("session_id", sessionId.toString())
+            .addQueryParameter("optimistic", "true")
+            .build(),
+        dest,
+    )
+
+    fun confirmDownloaded(
+        saveId: Int,
+        deviceId: String,
+        md5: String,
+    ) {
+        val body = JSONObject().put("device_id", deviceId).put("content_hash", md5)
+        val target = url("api/saves").addPathSegment(saveId.toString()).addPathSegment("downloaded").build()
+        execute(authed(Request.Builder().url(target)).post(body.toString().toRequestBody(JSON)).build()).close()
+    }
+
+    /** Uploads this TV's save into a slot, the same way the web player does. */
+    fun uploadSyncedSave(
+        local: RommLocalSave,
+        file: File,
+        deviceId: String,
+        overwrite: Boolean,
+    ) {
+        val target =
+            url("api/saves")
+                .addQueryParameter("rom_id", local.romId.toString())
+                .addQueryParameter("emulator", local.emulator)
+                .addQueryParameter("slot", local.slot)
+                .addQueryParameter("device_id", deviceId)
+                .addQueryParameter("content_hash", local.md5)
+                .addQueryParameter("autocleanup", "true")
+                .addQueryParameter("overwrite", overwrite.toString())
+                .build()
+        val body =
+            MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("saveFile", local.fileName, file.asRequestBody("application/octet-stream".toMediaType()))
+                .build()
+        execute(authed(Request.Builder().url(target)).post(body).build()).close()
+    }
+
+    /** Closes a sync session, reporting play time so RomM's "last played" and play time include the TV. */
+    fun completeSync(
+        sessionId: Int,
+        completed: Int,
+        failed: Int,
+        sessions: List<RommPlaySession>,
+    ) {
+        val body =
+            JSONObject()
+                .put("operations_completed", completed)
+                .put("operations_failed", failed)
+        if (sessions.isNotEmpty()) body.put("play_sessions", playSessionsJson(sessions))
+        val target = url("api/sync/sessions").addPathSegment(sessionId.toString()).addPathSegment("complete").build()
+        execute(authed(Request.Builder().url(target)).post(body.toString().toRequestBody(JSON)).build()).close()
+    }
+
+    /** Reports play time on its own, for when a sync session couldn't be used. */
+    fun reportPlaySessions(
+        deviceId: String?,
+        sessions: List<RommPlaySession>,
+    ) {
+        val body = JSONObject().put("sessions", playSessionsJson(sessions))
+        deviceId?.let { body.put("device_id", it) }
+        execute(authed(Request.Builder().url(url("api/play-sessions").build())).post(body.toString().toRequestBody(JSON)).build()).close()
+    }
+
+    private fun playSessionsJson(sessions: List<RommPlaySession>) =
+        JSONArray(
+            sessions.map {
+                JSONObject()
+                    .put("rom_id", it.romId)
+                    .put("save_slot", it.slot ?: JSONObject.NULL)
+                    .put("start_time", iso(it.startMillis))
+                    .put("end_time", iso(it.endMillis))
+                    .put("duration_ms", it.durationMillis)
+            },
+        )
+
+    // ---- save states
+
+    fun downloadState(
+        stateId: Int,
+        dest: File,
+    ) = download(url("api/states").addPathSegment(stateId.toString()).addPathSegment("content").build(), dest)
+
+    /** Uploads a new state. Returns its id in RomM. */
+    fun uploadState(
+        romId: Int,
+        emulator: String,
+        fileName: String,
+        bytes: ByteArray,
+        screenshot: ByteArray?,
+    ): Int {
+        val target =
+            url("api/states")
+                .addQueryParameter("rom_id", romId.toString())
+                .addQueryParameter("emulator", emulator)
+                .build()
+        val body = stateBody(fileName, bytes, screenshot)
+        return execute(authed(Request.Builder().url(target)).post(body).build()).use { JSONObject(it.body!!.string()).getInt("id") }
+    }
+
+    /** Replaces an existing state's contents. Returns false if it no longer exists in RomM. */
+    fun updateState(
+        stateId: Int,
+        fileName: String,
+        bytes: ByteArray,
+        screenshot: ByteArray?,
+    ): Boolean {
+        val target = url("api/states").addPathSegment(stateId.toString()).build()
+        return try {
+            execute(authed(Request.Builder().url(target)).put(stateBody(fileName, bytes, screenshot)).build()).close()
+            true
+        } catch (e: RommException) {
+            if (e.code == 404) false else throw e
+        }
+    }
+
+    private fun stateBody(
+        fileName: String,
+        bytes: ByteArray,
+        screenshot: ByteArray?,
+    ): MultipartBody {
+        val builder =
+            MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("stateFile", fileName, bytes.toRequestBody("application/octet-stream".toMediaType()))
+        if (screenshot != null) {
+            builder.addFormDataPart("screenshotFile", fileName.substringBeforeLast('.') + ".png", screenshot.toRequestBody("image/png".toMediaType()))
+        }
+        return builder.build()
+    }
 
     /** Uploads a save into its own slot in RomM, so it sits beside the web player's saves instead of replacing them. */
     fun uploadSave(
@@ -512,6 +781,9 @@ class RommClient(private val session: RommSession) {
                 .readTimeout(90, TimeUnit.SECONDS)
                 .build()
         }
+
+        fun iso(millis: Long): String =
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(millis)
 
         private fun JSONObject.optStringOrNull(key: String): String? =
             if (isNull(key)) null else optString(key).ifBlank { null }
