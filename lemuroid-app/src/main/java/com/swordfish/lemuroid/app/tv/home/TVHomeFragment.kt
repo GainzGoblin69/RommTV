@@ -89,6 +89,8 @@ class TVHomeFragment : BrowseSupportFragment() {
             OnItemViewClickedListener { _, item, _, _ ->
                 when (item) {
                     is Game -> gameInteractor.onGamePlay(item)
+                    is InstalledGame -> confirmRemove(item)
+                    is StorageSummary -> refreshInstalled()
                     is MetaSystemInfo -> {
                         val action =
                             TVHomeFragmentDirections.actionNavigationSystemsToNavigationGames(
@@ -240,7 +242,62 @@ class TVHomeFragment : BrowseSupportFragment() {
         val settingsTitle = resources.getString(R.string.tv_home_section_settings)
         result.add(ListRow(HeaderItem(SETTINGS_ADAPTER, settingsTitle), settingsItems))
 
+        // Installed: the TV's free space and the games downloaded to it
+        installedItems = ArrayObjectAdapter(InstalledPresenter(cardSize, settingsCardPadding))
+        result.add(ListRow(HeaderItem(INSTALLED_ADAPTER, "Installed"), installedItems))
+
         adapter = result
+        refreshInstalled()
+    }
+
+    private var installedItems: ArrayObjectAdapter? = null
+
+    /** Re-reads which games are on the TV and how much space is left. */
+    private fun refreshInstalled() {
+        val context = context?.applicationContext ?: return
+        viewLifecycleOwnerLiveData.value?.lifecycle?.coroutineScope?.launch {
+            val items =
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val files = com.swordfish.lemuroid.lib.romm.RommGameFiles(context)
+                    val games =
+                        files.installed().mapNotNull { (romId, size) ->
+                            val gameId =
+                                retrogradeDb.query("SELECT id FROM games WHERE fileUri LIKE ?", arrayOf<Any?>("romm://rom/$romId?%")).use {
+                                    if (it.moveToFirst()) it.getInt(0) else null
+                                } ?: return@mapNotNull null
+                            retrogradeDb.gameDao().selectById(gameId)?.let { InstalledGame(it, romId, size) }
+                        }
+                    val (free, total) = files.space()
+                    listOf<Any>(StorageSummary(free, total, games.sumOf { it.sizeBytes }, games.size)) + games
+                }
+            installedItems?.setItems(items, null)
+        }
+    }
+
+    /** Clicking an installed game: delete it from the TV, or cancel. */
+    private fun confirmRemove(item: InstalledGame) {
+        val context = requireContext()
+        android.app.AlertDialog.Builder(context)
+            .setTitle("Delete ${item.game.displayName()}?")
+            .setMessage(
+                "Frees ${formatBytes(item.sizeBytes)} on this TV. It stays in your RomM library and downloads again " +
+                    "the next time you play it. Your saves are kept.",
+            )
+            .setPositiveButton("Delete") { _, _ ->
+                viewLifecycleOwner.lifecycle.coroutineScope.launch {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        com.swordfish.lemuroid.lib.romm.RommGameFiles(context.applicationContext).remove(item.romId)
+                    }
+                    refreshInstalled()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshInstalled()
     }
 
     private fun buildSettingsRowItems(
@@ -283,6 +340,7 @@ class TVHomeFragment : BrowseSupportFragment() {
         const val SYSTEM_ADAPTER = 2L
         const val SETTINGS_ADAPTER = 3L
         const val FAVORITES_ADAPTER = 4L
+        const val INSTALLED_ADAPTER = 5L
 
         val LEANBACK_MULTI_DIFF_CALLBACK =
             object : DiffCallback<Any>() {

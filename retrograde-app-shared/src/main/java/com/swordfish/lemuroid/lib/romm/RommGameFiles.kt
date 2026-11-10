@@ -208,6 +208,18 @@ class RommGameFiles(context: Context) {
         gameDir(romId).deleteRecursively()
     }
 
+    /** Games downloaded to this TV: (RomM game id, bytes on disk), largest first. */
+    fun installed(): List<Pair<Int, Long>> =
+        gamesRoot.listFiles()
+            ?.filter { it.isDirectory && File(it, READY_MARKER).exists() }
+            ?.mapNotNull { dir -> dir.name.toIntOrNull()?.let { it to dir.walkTopDown().filter { f -> f.isFile }.sumOf { f -> f.length() } } }
+            ?.sortedByDescending { it.second }
+            ?: emptyList()
+
+    /** Free and total bytes on the storage the games are kept on. */
+    fun space(): Pair<Long, Long> =
+        runCatching { StatFs(gamesRoot.path).let { it.availableBytes to it.totalBytes } }.getOrDefault(0L to 0L)
+
     companion object {
         /** The last game handed to the emulator in this process, so a load error can say which file and clear it. */
         @Volatile
