@@ -90,7 +90,15 @@ class TVHomeFragment : BrowseSupportFragment() {
                 when (item) {
                     is Game -> gameInteractor.onGamePlay(item)
                     is InstalledGame -> confirmRemove(item)
-                    is StorageSummary -> refreshInstalled()
+                    is StorageSummary -> showDownloadLocation()
+                    is InstalledAction ->
+                        when (item.type) {
+                            InstalledAction.Type.MOVE_ALL_TO_USB -> confirmMoveAllToUsb()
+                            InstalledAction.Type.SORT -> {
+                                installedSort = if (installedSort == InstalledSort.SIZE) InstalledSort.LOCATION else InstalledSort.SIZE
+                                refreshInstalled()
+                            }
+                        }
                     is MetaSystemInfo -> {
                         val action =
                             TVHomeFragmentDirections.actionNavigationSystemsToNavigationGames(
@@ -109,6 +117,7 @@ class TVHomeFragment : BrowseSupportFragment() {
                                     requireContext().applicationContext,
                                 )
                             TVSettingType.ROMM_ACCOUNT -> showRommStatus()
+                            TVSettingType.DOWNLOAD_LOCATION -> showDownloadLocation()
                             TVSettingType.SETTINGS -> launchTVSettings()
                             TVSettingType.SHOW_ALL_FAVORITES -> launchFavorites()
                             TVSettingType.SAVE_SYNC ->
@@ -252,47 +261,167 @@ class TVHomeFragment : BrowseSupportFragment() {
 
     private var installedItems: ArrayObjectAdapter? = null
 
-    /** Re-reads which games are on the TV and how much space is left. */
+    private var installedSort: InstalledSort
+        get() =
+            runCatching {
+                InstalledSort.valueOf(
+                    requireContext().getSharedPreferences("romm_storage", Context.MODE_PRIVATE)
+                        .getString("installed_sort", InstalledSort.SIZE.name)!!,
+                )
+            }.getOrDefault(InstalledSort.SIZE)
+        set(value) {
+            requireContext().getSharedPreferences("romm_storage", Context.MODE_PRIVATE)
+                .edit().putString("installed_sort", value.name).apply()
+        }
+
+    /** Re-reads which games are on the TV and the USB drive, and how much space is left on each. */
     private fun refreshInstalled() {
         val context = context?.applicationContext ?: return
+        val sort = installedSort
         viewLifecycleOwnerLiveData.value?.lifecycle?.coroutineScope?.launch {
             val items =
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     val files = com.swordfish.lemuroid.lib.romm.RommGameFiles(context)
                     val games =
-                        files.installed().mapNotNull { (romId, size) ->
+                        files.installed().mapNotNull { entry ->
                             val gameId =
-                                retrogradeDb.query("SELECT id FROM games WHERE fileUri LIKE ?", arrayOf<Any?>("romm://rom/$romId?%")).use {
+                                retrogradeDb.query("SELECT id FROM games WHERE fileUri LIKE ?", arrayOf<Any?>("romm://rom/${entry.romId}?%")).use {
                                     if (it.moveToFirst()) it.getInt(0) else null
                                 } ?: return@mapNotNull null
-                            retrogradeDb.gameDao().selectById(gameId)?.let { InstalledGame(it, romId, size) }
+                            retrogradeDb.gameDao().selectById(gameId)?.let { InstalledGame(it, entry.romId, entry.sizeBytes, entry.isUsb) }
                         }
-                    val (free, total) = files.space()
-                    listOf<Any>(StorageSummary(free, total, games.sumOf { it.sizeBytes }, games.size)) + games
+                    val sorted =
+                        when (sort) {
+                            InstalledSort.SIZE -> games.sortedByDescending { it.sizeBytes }
+                            InstalledSort.LOCATION -> games.sortedWith(compareByDescending<InstalledGame> { it.isUsb }.thenByDescending { it.sizeBytes })
+                        }
+                    val target = files.downloadTarget()
+                    val summaries =
+                        files.storages().map { storage ->
+                            val (free, total) = files.space(storage)
+                            val onIt = games.filter { it.isUsb == storage.isUsb }
+                            StorageSummary(storage.isUsb, free, total, onIt.sumOf { it.sizeBytes }, onIt.size, storage == target)
+                        }
+                    val actions = mutableListOf<InstalledAction>()
+                    val onTv = games.filter { !it.isUsb }
+                    if (files.usbStorage != null && onTv.isNotEmpty()) {
+                        actions += InstalledAction(InstalledAction.Type.MOVE_ALL_TO_USB, "Move all to USB", "${onTv.size} games, ${formatBytes(onTv.sumOf { it.sizeBytes })}")
+                    }
+                    actions += InstalledAction(InstalledAction.Type.SORT, "Sort: ${sort.label}", "Click to sort by ${if (sort == InstalledSort.SIZE) "location" else "size"}")
+                    summaries + actions + sorted
                 }
             installedItems?.setItems(items, null)
         }
     }
 
-    /** Clicking an installed game: delete it from the TV, or cancel. */
-    private fun confirmRemove(item: InstalledGame) {
+    /** Settings: where new downloads go. The USB drive can only be chosen while one is plugged in. */
+    private fun showDownloadLocation() {
         val context = requireContext()
-        android.app.AlertDialog.Builder(context)
-            .setTitle("Delete ${item.game.displayName()}?")
-            .setMessage(
-                "Frees ${formatBytes(item.sizeBytes)} on this TV. It stays in your RomM library and downloads again " +
-                    "the next time you play it. Your saves are kept.",
-            )
-            .setPositiveButton("Delete") { _, _ ->
-                viewLifecycleOwner.lifecycle.coroutineScope.launch {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        com.swordfish.lemuroid.lib.romm.RommGameFiles(context.applicationContext).remove(item.romId)
+        viewLifecycleOwner.lifecycle.coroutineScope.launch {
+            val files = com.swordfish.lemuroid.lib.romm.RommGameFiles(context.applicationContext)
+            val (tvLabel, usbLabel, usbConnected) =
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val usb = files.usbStorage
+                    Triple(
+                        "This TV  (${formatBytes(files.space(files.storages().first()).first)} free)",
+                        if (usb != null) "USB drive  (${formatBytes(files.space(usb).first)} free)" else "USB drive  (not connected)",
+                        usb != null,
+                    )
+                }
+            val preferUsb = com.swordfish.lemuroid.lib.romm.RommGameFiles.preferUsb(context)
+            android.app.AlertDialog.Builder(context)
+                .setTitle("Download new games to")
+                .setSingleChoiceItems(arrayOf(tvLabel, usbLabel), if (preferUsb) 1 else 0) { dialog, which ->
+                    if (which == 1 && !usbConnected) {
+                        android.widget.Toast.makeText(context, "Plug in a USB drive first.", android.widget.Toast.LENGTH_LONG).show()
+                        return@setSingleChoiceItems
                     }
+                    com.swordfish.lemuroid.lib.romm.RommGameFiles.setPreferUsb(context, which == 1)
+                    dialog.dismiss()
                     refreshInstalled()
                 }
+                .setMessage(null)
+                .setNegativeButton("Close", null)
+                .show()
+        }
+    }
+
+    /** Clicking an installed game: delete it, move it to the other storage, or cancel. */
+    private fun confirmRemove(item: InstalledGame) {
+        val context = requireContext()
+        val files = com.swordfish.lemuroid.lib.romm.RommGameFiles(context.applicationContext)
+        val builder =
+            android.app.AlertDialog.Builder(context)
+                .setTitle("Delete ${item.game.displayName()}?")
+                .setMessage(
+                    "It's on the ${if (item.isUsb) "USB drive" else "TV"} and takes ${formatBytes(item.sizeBytes)}. " +
+                        "It stays in your RomM library and downloads again the next time you play it. Your saves are kept.",
+                )
+                .setPositiveButton("Delete") { _, _ ->
+                    viewLifecycleOwner.lifecycle.coroutineScope.launch {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { files.remove(item.romId) }
+                        refreshInstalled()
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+        if (item.isUsb || files.usbStorage != null) {
+            builder.setNeutralButton(if (item.isUsb) "Move to TV" else "Move to USB") { _, _ -> moveGames(listOf(item), toUsb = !item.isUsb) }
+        }
+        builder.show()
+    }
+
+    private fun confirmMoveAllToUsb() {
+        val context = requireContext()
+        viewLifecycleOwner.lifecycle.coroutineScope.launch {
+            val onTv =
+                installedItems?.let { adapter -> (0 until adapter.size()).mapNotNull { adapter.get(it) as? InstalledGame } }
+                    ?.filter { !it.isUsb }.orEmpty()
+            if (onTv.isEmpty()) return@launch
+            android.app.AlertDialog.Builder(context)
+                .setTitle("Move all games to the USB drive?")
+                .setMessage("${onTv.size} games, ${formatBytes(onTv.sumOf { it.sizeBytes })}. Keep the drive plugged in until it's done.")
+                .setPositiveButton("Move") { _, _ -> moveGames(onTv, toUsb = true) }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+
+    /** Moves games one by one with a progress box, then reports anything that didn't fit or failed. */
+    private fun moveGames(
+        games: List<InstalledGame>,
+        toUsb: Boolean,
+    ) {
+        val context = requireContext()
+        val progress =
+            android.app.AlertDialog.Builder(context)
+                .setTitle(if (toUsb) "Moving to the USB drive" else "Moving to the TV")
+                .setMessage("Starting…")
+                .setCancelable(false)
+                .show()
+        viewLifecycleOwner.lifecycle.coroutineScope.launch {
+            val files = com.swordfish.lemuroid.lib.romm.RommGameFiles(context.applicationContext)
+            val failed = mutableListOf<String>()
+            games.forEachIndexed { i, g ->
+                progress.setMessage("${i + 1} of ${games.size}: ${g.game.displayName()} (${formatBytes(g.sizeBytes)})")
+                val ok =
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        if (toUsb) files.moveToUsb(g.romId) else files.moveToTv(g.romId)
+                    }
+                if (!ok) failed += g.game.displayName()
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+            progress.dismiss()
+            if (failed.isNotEmpty()) {
+                android.app.AlertDialog.Builder(context)
+                    .setTitle("Some games weren't moved")
+                    .setMessage(
+                        "There wasn't enough space, or the drive was removed. They're still where they were:\n\n" +
+                            failed.joinToString("\n"),
+                    )
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+            refreshInstalled()
+        }
     }
 
     override fun onResume() {
@@ -315,6 +444,7 @@ class TVHomeFragment : BrowseSupportFragment() {
             }
 
             add(TVSetting(TVSettingType.ROMM_ACCOUNT, !indexInProgress))
+            add(TVSetting(TVSettingType.DOWNLOAD_LOCATION, true))
             add(TVSetting(TVSettingType.SETTINGS, !indexInProgress))
         }
     }

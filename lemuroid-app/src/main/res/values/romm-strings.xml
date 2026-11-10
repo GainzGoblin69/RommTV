@@ -2,4 +2,5 @@
 <resources>
     <string name="romm_account">RomM account</string>
     <string name="romm_sync">Sync library</string>
+    <string name="romm_download_location">Download location</string>
 </resources>

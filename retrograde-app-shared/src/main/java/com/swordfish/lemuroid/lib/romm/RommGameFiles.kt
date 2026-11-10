@@ -2,6 +2,7 @@ package com.swordfish.lemuroid.lib.romm
 
 import android.content.Context
 import android.net.Uri
+import android.os.Environment
 import android.os.StatFs
 import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.SystemID
@@ -11,8 +12,17 @@ import java.io.File
 import org.apache.commons.compress.archivers.sevenz.SevenZFile
 import java.util.zip.ZipInputStream
 
+/** Where downloaded games can live: the TV's own storage, or a USB drive plugged into it. */
+data class GameStorage(val root: File, val isUsb: Boolean) {
+    val label: String get() = if (isUsb) "USB drive" else "This TV"
+}
+
+/** A game downloaded to the TV or the USB drive. */
+data class InstalledGameFiles(val romId: Int, val sizeBytes: Long, val isUsb: Boolean)
+
 /**
- * Downloads a game from RomM the first time it is played, and keeps it on the TV as a cache.
+ * Downloads a game from RomM the first time it is played, and keeps it as a cache on the TV or on a USB drive.
+ * New downloads go where Settings says; games already on either one keep working.
  * When space runs low, the games played longest ago are removed first. Saves are kept elsewhere and never removed.
  */
 class RommGameFiles(context: Context) {
@@ -20,25 +30,49 @@ class RommGameFiles(context: Context) {
     private val session = RommSession(appContext)
     private val client = RommClient(session)
 
-    private val gamesRoot: File
-        get() = File(appContext.getExternalFilesDir(null) ?: appContext.filesDir, "romm-games").apply { mkdirs() }
+    /** The TV's own storage. */
+    private val tvStorage: GameStorage
+        get() = GameStorage(File(appContext.getExternalFilesDir(null) ?: appContext.filesDir, "romm-games").apply { mkdirs() }, false)
+
+    /** A USB drive (or SD card) plugged in and mounted as portable storage, if there is one. */
+    val usbStorage: GameStorage?
+        get() =
+            appContext.getExternalFilesDirs(null)
+                .drop(1)
+                .filterNotNull()
+                .firstOrNull { dir ->
+                    runCatching {
+                        Environment.getExternalStorageState(dir) == Environment.MEDIA_MOUNTED &&
+                            Environment.isExternalStorageRemovable(dir)
+                    }.getOrDefault(false)
+                }
+                ?.let { GameStorage(File(it, "romm-games").apply { mkdirs() }, true) }
+
+    /** Every place games can be found right now. */
+    fun storages(): List<GameStorage> = listOfNotNull(tvStorage, usbStorage)
+
+    /** Where new downloads go: the USB drive when it's chosen in Settings and plugged in, otherwise the TV. */
+    fun downloadTarget(): GameStorage = if (preferUsb(appContext)) usbStorage ?: tvStorage else tvStorage
 
     /** Called while a download runs (bytes done, bytes total), so the loading screen can show it. */
     var onProgress: ((Long, Long) -> Unit)? = null
 
-    fun isDownloaded(romId: Int): Boolean = File(gameDir(romId), READY_MARKER).exists()
+    fun isDownloaded(romId: Int): Boolean = findReady(romId) != null
 
-    private fun gameDir(romId: Int) = File(gamesRoot, romId.toString())
+    /** The folder holding a finished download of this game, on whichever storage it's on. */
+    private fun findReady(romId: Int): File? =
+        storages().map { File(it.root, romId.toString()) }.firstOrNull { File(it, READY_MARKER).exists() }
+
+    fun isOnUsb(romId: Int): Boolean = usbStorage?.let { File(File(it.root, romId.toString()), READY_MARKER).exists() } ?: false
 
     /** Returns the file to start the core with (the .cue / .m3u for disc games, else the game itself). */
     fun prepare(
         romId: Int,
         systemId: String,
     ): File {
-        val dir = gameDir(romId)
-        val marker = File(dir, READY_MARKER)
-        if (marker.exists()) {
-            val cached = File(dir, marker.readText().trim())
+        findReady(romId)?.let { found ->
+            val marker = File(found, READY_MARKER)
+            val cached = File(found, marker.readText().trim())
             if (cached.exists() && cached.length() > 0) {
                 marker.setLastModified(System.currentTimeMillis())
                 lastPrepared = romId to cached
@@ -46,7 +80,11 @@ class RommGameFiles(context: Context) {
             }
         }
 
-        dir.deleteRecursively()
+        // A new download: clear any half-finished copy, then download to the chosen storage
+        storages().forEach { File(it.root, romId.toString()).deleteRecursively() }
+        val target = downloadTarget()
+        val dir = File(target.root, romId.toString())
+        val marker = File(dir, READY_MARKER)
         dir.mkdirs()
 
         val rom = JSONObject(fetchRom(romId))
@@ -62,7 +100,7 @@ class RommGameFiles(context: Context) {
                 .ifEmpty { throw RommException("This game has no game files on the server, only extras like artwork") }
 
         val total = files.sumOf { it.third }
-        makeRoom(total * 2)
+        makeRoom(target, total * 2, keep = romId)
 
         var doneBefore = 0L
         files.forEach { (id, name, size) ->
@@ -188,37 +226,82 @@ class RommGameFiles(context: Context) {
     private fun systemName(systemId: String): String =
         runCatching { appContext.getString(GameSystem.findById(systemId).titleResId) }.getOrDefault(systemId)
 
-    /** Frees space by removing the games played longest ago, keeping at least [needed] bytes plus a margin free. */
-    private fun makeRoom(needed: Long) {
+    /** Frees space on [storage] by removing the games played longest ago, keeping [needed] bytes plus a margin free. */
+    private fun makeRoom(
+        storage: GameStorage,
+        needed: Long,
+        keep: Int,
+    ) {
         val margin = 500L * 1024 * 1024
-        fun free(): Long = runCatching { StatFs(gamesRoot.path).availableBytes }.getOrDefault(Long.MAX_VALUE)
+        fun free(): Long = runCatching { StatFs(storage.root.path).availableBytes }.getOrDefault(Long.MAX_VALUE)
         if (free() > needed + margin) return
         val oldestFirst =
-            gamesRoot.listFiles()?.filter { it.isDirectory }
+            storage.root.listFiles()?.filter { it.isDirectory && it.name != keep.toString() }
                 ?.sortedBy { File(it, READY_MARKER).lastModified() } ?: return
         for (game in oldestFirst) {
             if (free() > needed + margin) break
             Timber.i("Removing ${game.name} to make room")
             game.deleteRecursively()
         }
-        if (free() < needed) throw RommException("Not enough space on the TV for this game")
+        if (free() < needed) throw RommException("Not enough space on the ${if (storage.isUsb) "USB drive" else "TV"} for this game")
     }
 
+    /** Deletes the game from the TV and the USB drive. */
     fun remove(romId: Int) {
-        gameDir(romId).deleteRecursively()
+        storages().forEach { File(it.root, romId.toString()).deleteRecursively() }
     }
 
-    /** Games downloaded to this TV: (RomM game id, bytes on disk), largest first. */
-    fun installed(): List<Pair<Int, Long>> =
-        gamesRoot.listFiles()
-            ?.filter { it.isDirectory && File(it, READY_MARKER).exists() }
-            ?.mapNotNull { dir -> dir.name.toIntOrNull()?.let { it to dir.walkTopDown().filter { f -> f.isFile }.sumOf { f -> f.length() } } }
-            ?.sortedByDescending { it.second }
-            ?: emptyList()
+    /** Games downloaded to the TV and the USB drive. */
+    fun installed(): List<InstalledGameFiles> =
+        storages().flatMap { storage ->
+            storage.root.listFiles()
+                ?.filter { it.isDirectory && File(it, READY_MARKER).exists() }
+                ?.mapNotNull { dir ->
+                    dir.name.toIntOrNull()?.let {
+                        InstalledGameFiles(it, dir.walkTopDown().filter { f -> f.isFile }.sumOf { f -> f.length() }, storage.isUsb)
+                    }
+                } ?: emptyList()
+        }.distinctBy { it.romId }
 
-    /** Free and total bytes on the storage the games are kept on. */
-    fun space(): Pair<Long, Long> =
-        runCatching { StatFs(gamesRoot.path).let { it.availableBytes to it.totalBytes } }.getOrDefault(0L to 0L)
+    /** Free and total bytes on one storage. */
+    fun space(storage: GameStorage): Pair<Long, Long> =
+        runCatching { StatFs(storage.root.path).let { it.availableBytes to it.totalBytes } }.getOrDefault(0L to 0L)
+
+    /**
+     * Moves a downloaded game from the TV to the USB drive: copies it, checks the copy, then deletes the original.
+     * Returns false (and leaves the game where it was) if it doesn't fit.
+     */
+    fun moveToUsb(romId: Int): Boolean = move(romId, tvStorage, usbStorage ?: return false)
+
+    /** Moves a game from the USB drive back to the TV. */
+    fun moveToTv(romId: Int): Boolean = move(romId, usbStorage ?: return false, tvStorage)
+
+    private fun move(
+        romId: Int,
+        from: GameStorage,
+        to: GameStorage,
+    ): Boolean {
+        val source = File(from.root, romId.toString())
+        if (!File(source, READY_MARKER).exists()) return false
+        val size = source.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+        if (space(to).first < size + 50L * 1024 * 1024) return false
+        val dest = File(to.root, romId.toString())
+        val temp = File(to.root, "$romId.moving")
+        temp.deleteRecursively()
+        try {
+            source.copyRecursively(temp, overwrite = true)
+            val copied = temp.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+            if (copied != size) error("copy was incomplete ($copied of $size bytes)")
+            dest.deleteRecursively()
+            if (!temp.renameTo(dest)) error("couldn't finish the move")
+        } catch (e: Throwable) {
+            temp.deleteRecursively()
+            Timber.e(e, "Couldn't move game $romId")
+            return false
+        }
+        source.deleteRecursively()
+        return true
+    }
 
     companion object {
         /** The last game handed to the emulator in this process, so a load error can say which file and clear it. */
@@ -246,6 +329,20 @@ class RommGameFiles(context: Context) {
             )
 
         const val SCHEME = "romm"
+
+        private const val STORAGE_PREFS = "romm_storage"
+        private const val KEY_PREFER_USB = "prefer_usb"
+
+        /** Whether new downloads should go to the USB drive (set in Settings). */
+        fun preferUsb(context: Context): Boolean =
+            context.getSharedPreferences(STORAGE_PREFS, Context.MODE_PRIVATE).getBoolean(KEY_PREFER_USB, false)
+
+        fun setPreferUsb(
+            context: Context,
+            value: Boolean,
+        ) {
+            context.getSharedPreferences(STORAGE_PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_PREFER_USB, value).commit()
+        }
 
         fun gameUri(
             romId: Int,
