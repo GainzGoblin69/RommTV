@@ -247,8 +247,16 @@ class GameDetailActivity : ComponentActivity() {
         val playFocus = remember { FocusRequester() }
         val scroll = rememberScrollState()
         val scope = rememberCoroutineScope()
-        // Moving back up to the buttons brings the whole top of the page back, not just the button row
-        val toTop: () -> Unit = { scope.launch { scroll.animateScrollTo(0) } }
+        // Arriving at the button row from below brings the whole top of the page back (title, cover, description).
+        // Moving left and right along the row doesn't scroll at all.
+        var buttonsFocused by remember { mutableStateOf(false) }
+        val toTop: () -> Unit = {
+            scope.launch {
+                // Let the TV's own "show the focused button" scroll finish first, so the two don't fight
+                kotlinx.coroutines.delay(60)
+                scroll.animateScrollTo(0)
+            }
+        }
         LaunchedEffect(current != null) {
             if (current != null) runCatching { playFocus.requestFocus() }
         }
@@ -302,17 +310,24 @@ class GameDetailActivity : ComponentActivity() {
                             )
                         }
                         Spacer(Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TvButton("Play", primary = true, modifier = Modifier.focusRequester(playFocus), onFocused = toTop) { play(true) }
-                            TvButton("Pick a save" + (info?.saves?.size?.takeIf { it > 0 }?.let { " ($it)" } ?: ""), onFocused = toTop) { showSaves = true }
+                        Row(
+                            modifier =
+                                Modifier.onFocusChanged {
+                                    if (it.hasFocus && !buttonsFocused) toTop()
+                                    buttonsFocused = it.hasFocus
+                                },
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TvButton("Play", primary = true, modifier = Modifier.focusRequester(playFocus)) { play(true) }
+                            TvButton("Pick a save" + (info?.saves?.size?.takeIf { it > 0 }?.let { " ($it)" } ?: "")) { showSaves = true }
                             if (info != null && supportsMultiplayer(info)) {
                                 TvButton(
                                     "Play online" + (if (openRooms > 0) " ($openRooms room" + (if (openRooms == 1) "" else "s") + " open)" else ""),
-                                    onFocused = toTop,
                                 ) { NetplayActivity.launch(this@GameDetailActivity, info.id) }
                             }
-                            TvButton(if (favorite) "★ Favorite" else "☆ Favorite", onFocused = toTop) { toggleFavorite() }
-                            if (onTv) TvButton("Remove from this TV", onFocused = toTop) { removeFromTv() }
+                            TvButton(if (favorite) "★ Favorite" else "☆ Favorite") { toggleFavorite() }
+                            if (onTv) TvButton("Remove from this TV") { removeFromTv() }
                         }
                         if (status.isNotBlank()) Text(status, color = Lime, fontSize = 13.sp, lineHeight = 18.sp)
                     }
