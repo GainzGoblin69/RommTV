@@ -73,6 +73,11 @@ import com.swordfish.lemuroid.lib.romm.RommRomDetail
 import com.swordfish.lemuroid.lib.romm.RommSave
 import com.swordfish.lemuroid.lib.romm.RommState
 import com.swordfish.lemuroid.lib.core.CoresSelection
+import com.swordfish.lemuroid.lib.core.CoreUpdater
+import com.swordfish.lemuroid.lib.bios.BiosManager
+import com.swordfish.lemuroid.lib.romm.RommBiosFetcher
+import com.swordfish.lemuroid.lib.romm.RommException
+import com.swordfish.lemuroid.lib.storage.DirectoriesManager
 import com.swordfish.lemuroid.lib.library.CoreID
 import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.saves.StatesManager
@@ -109,7 +114,30 @@ class GameDetailActivity : ComponentActivity() {
     @Inject
     lateinit var coresSelection: CoresSelection
 
+    @Inject
+    lateinit var coreUpdater: CoreUpdater
+
+    @Inject
+    lateinit var biosManager: BiosManager
+
     private val sync by lazy { RommSync(this, statesManager) }
+
+    /** The "Getting ready" screen's checklist, shown while a game downloads for the first time. */
+    private enum class StepState { WAITING, WORKING, DONE, FAILED }
+
+    private data class Prep(
+        val core: StepState = StepState.WAITING,
+        val bios: StepState = StepState.WAITING,
+        val game: StepState = StepState.WAITING,
+        val save: StepState = StepState.WAITING,
+        val doneBytes: Long = 0,
+        val totalBytes: Long = 0,
+    )
+
+    private var prep by mutableStateOf<Prep?>(null)
+
+    @Volatile
+    private var cancelPrep = false
 
     /** When the game was started, for reporting play time to RomM. */
     private var launchedAt = 0L
@@ -180,10 +208,63 @@ class GameDetailActivity : ComponentActivity() {
         earned = withContext(Dispatchers.IO) { runCatching { client.earnedAchievements(raId) }.getOrDefault(emptyMap()) }
     }
 
+    /**
+     * Gets everything the game needs before it starts: the emulator core, any BIOS files from RomM, and the game
+     * itself. A first download shows the "Getting ready" screen with progress. Returns false if it couldn't finish.
+     */
+    private suspend fun prepare(current: Game): Boolean {
+        val romId = RommSync.romId(current) ?: return true
+        val files = RommGameFiles(applicationContext)
+        val show = withContext(Dispatchers.IO) { !files.isDownloaded(romId) }
+        cancelPrep = false
+        var p = Prep()
+
+        fun set(next: Prep) {
+            p = next
+            if (show) prep = next
+        }
+        try {
+            val config = coresSelection.getCoreConfigForSystem(GameSystem.findById(current.systemId))
+            set(p.copy(core = StepState.WORKING))
+            withContext(Dispatchers.IO) { coreUpdater.downloadCores(applicationContext, listOf(config.coreID)) }
+
+            set(p.copy(core = StepState.DONE, bios = StepState.WORKING))
+            val missing =
+                withContext(Dispatchers.IO) {
+                    RommBiosFetcher(applicationContext, DirectoriesManager(applicationContext))
+                        .fetchMissing(current, biosManager.getMissingBiosFiles(config, current))
+                }
+            if (missing.isNotEmpty()) {
+                prep = null
+                status = "This system needs BIOS files that aren't in your RomM firmware: ${missing.joinToString(", ")}. " +
+                    "Upload them to this platform's firmware in RomM, then try again."
+                return false
+            }
+
+            set(p.copy(bios = StepState.DONE, game = StepState.WORKING))
+            withContext(Dispatchers.IO) {
+                files.onProgress = { done, total ->
+                    if (cancelPrep) throw RommException("Cancelled")
+                    runOnUiThread { if (prep != null) prep = prep?.copy(doneBytes = done, totalBytes = total) }
+                }
+                files.prepare(romId, current.systemId)
+            }
+            set(p.copy(game = StepState.DONE))
+            refreshOnTv()
+            return true
+        } catch (e: Throwable) {
+            Timber.e(e, "Couldn't get the game ready")
+            prep = null
+            status = if (cancelPrep) "Download cancelled." else "Couldn't get this game ready: ${e.message}"
+            return false
+        }
+    }
+
     private fun startGame(
         current: Game,
         loadSave: Boolean,
     ) {
+        prep = null
         launchedAt = System.currentTimeMillis()
         gameLauncher.launchGameAsync(this, current, loadSave, true)
     }
@@ -198,13 +279,19 @@ class GameDetailActivity : ComponentActivity() {
         val info = detail
         if (busy) return
         showSaves = false
-        if (info == null) {
-            startGame(current, loadSave)
-            return
-        }
         busy = true
-        status = "Syncing your save with RomM…"
+        status = ""
         lifecycleScope.launch {
+            if (!prepare(current)) {
+                busy = false
+                return@launch
+            }
+            if (info == null) {
+                busy = false
+                startGame(current, loadSave)
+                return@launch
+            }
+            if (prep != null) prep = prep?.copy(save = StepState.WORKING) else status = "Syncing your save with RomM…"
             val before = withContext(Dispatchers.IO) { runCatching { sync.beforePlay(current, info) } }
             val result =
                 before.getOrElse {
@@ -275,6 +362,10 @@ class GameDetailActivity : ComponentActivity() {
         showSaves = false
         status = "Getting the save from RomM…"
         lifecycleScope.launch {
+            if (!prepare(current)) {
+                busy = false
+                return@launch
+            }
             val result = withContext(Dispatchers.IO) { runCatching { sync.useServerSave(current, save) } }
             busy = false
             result.onSuccess {
@@ -296,6 +387,10 @@ class GameDetailActivity : ComponentActivity() {
         showSaves = false
         status = "Getting the save state from RomM…"
         lifecycleScope.launch {
+            if (!prepare(current)) {
+                busy = false
+                return@launch
+            }
             val result =
                 withContext(Dispatchers.IO) {
                     runCatching { sync.useServerState(current, coreFor(current), state) }
@@ -408,8 +503,18 @@ class GameDetailActivity : ComponentActivity() {
             if (current != null) runCatching { playFocus.requestFocus() }
         }
 
+        val preparing = prep
+        // Coming back from the "Getting ready" screen (or a game), the Play button is selected again
+        LaunchedEffect(preparing == null) {
+            if (preparing == null && current != null) runCatching { playFocus.requestFocus() }
+        }
+
         Box(Modifier.fillMaxSize().background(Ground)) {
             if (current == null) return@Box
+            if (preparing != null) {
+                PrepScreen(preparing, current)
+                return@Box
+            }
             Column(
                 modifier =
                     Modifier
@@ -682,6 +787,105 @@ class GameDetailActivity : ComponentActivity() {
                     lineHeight = 17.sp,
                 )
             }
+        }
+    }
+
+    /** "Getting ready": cover, a progress bar for the download, and a checklist of what's being fetched. */
+    @Composable
+    private fun PrepScreen(
+        p: Prep,
+        current: Game,
+    ) {
+        val cancel = remember { FocusRequester() }
+        LaunchedEffect(Unit) { runCatching { cancel.requestFocus() } }
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 80.dp, vertical = 48.dp),
+            horizontalArrangement = Arrangement.spacedBy(48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RommImage(
+                urls = listOfNotNull(current.coverFrontUrl),
+                description = "Cover",
+                modifier = Modifier.width(210.dp).height(280.dp).clip(RoundedCornerShape(10.dp)),
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("GETTING READY", color = Quiet, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp)
+                Text(detail?.title ?: current.title, color = TextColor, fontSize = 32.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold)
+
+                val fraction =
+                    when {
+                        p.game == StepState.DONE -> 1f
+                        p.totalBytes > 0 -> (p.doneBytes.toFloat() / p.totalBytes).coerceIn(0f, 1f)
+                        else -> 0f
+                    }
+                Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(Raised)) {
+                    Box(Modifier.fillMaxWidth(fraction).height(8.dp).clip(RoundedCornerShape(4.dp)).background(Lime))
+                }
+                Text(
+                    when {
+                        p.game == StepState.WORKING && p.totalBytes > 0 ->
+                            "Downloading the game from your server: ${size(p.doneBytes)} of ${size(p.totalBytes)}. This only happens the first time."
+                        p.game == StepState.WORKING -> "Downloading the game from your server. This only happens the first time."
+                        p.save == StepState.WORKING -> "Checking your save with RomM…"
+                        else -> "Getting the emulator and system files…"
+                    },
+                    color = Quiet,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                )
+
+                Column {
+                    PrepRow("Emulator for ${detail?.platformName ?: "this system"}", p.core)
+                    PrepRow("System files (BIOS) from your server", p.bios)
+                    PrepRow("Game file", p.game)
+                    PrepRow("Your latest save", p.save)
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TvButton("Cancel", modifier = Modifier.focusRequester(cancel)) {
+                        cancelPrep = true
+                        status = "Cancelling…"
+                    }
+                    Text("The game starts by itself when everything is ready.", color = Quiet, fontSize = 13.sp)
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun PrepRow(
+        label: String,
+        state: StepState,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                when (state) {
+                    StepState.DONE -> "✓"
+                    StepState.WORKING -> "↓"
+                    StepState.FAILED -> "!"
+                    StepState.WAITING -> "○"
+                },
+                color = if (state == StepState.DONE) Lime else if (state == StepState.WAITING) Quiet else TextColor,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.width(20.dp),
+            )
+            Text(label, color = if (state == StepState.WAITING) Quiet else TextColor, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            Text(
+                when (state) {
+                    StepState.DONE -> "Ready"
+                    StepState.WORKING -> "Working"
+                    StepState.FAILED -> "Failed"
+                    StepState.WAITING -> "Next"
+                },
+                color = if (state == StepState.DONE) Lime else if (state == StepState.WAITING) Quiet else TextColor,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
     }
 

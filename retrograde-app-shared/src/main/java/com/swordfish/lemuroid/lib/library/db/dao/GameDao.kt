@@ -67,6 +67,18 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE systemId IN (:systemIds) ORDER BY COALESCE(customName, title) ASC, id DESC")
     fun selectBySystems(systemIds: List<String>): PagingSource<Int, Game>
 
+    @Query("SELECT * FROM games WHERE systemId IN (:systemIds) ORDER BY COALESCE(customName, title) ASC, id DESC")
+    suspend fun listBySystems(systemIds: List<String>): List<Game>
+
+    @Query("SELECT * FROM games ORDER BY id DESC LIMIT :limit")
+    fun selectLastAdded(limit: Int): Flow<List<Game>>
+
+    @Query("SELECT * FROM games WHERE lastPlayedAt IS NOT NULL ORDER BY lastPlayedAt DESC LIMIT :limit")
+    fun selectRecents(limit: Int): Flow<List<Game>>
+
+    @Query("SELECT * FROM games WHERE isFavorite = 1 ORDER BY COALESCE(customName, title) ASC")
+    fun selectAllFavorites(): Flow<List<Game>>
+
     @Query("SELECT DISTINCT systemId FROM games ORDER BY systemId ASC")
     suspend fun selectSystems(): List<String>
 

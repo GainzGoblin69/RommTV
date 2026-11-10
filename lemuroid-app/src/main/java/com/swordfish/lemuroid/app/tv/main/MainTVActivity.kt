@@ -84,6 +84,16 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
         AppUpdater.checkInBackground(this, lifecycleScope)
     }
 
+    /** A game controller's A button presses the selected item, the same as OK on the remote. */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_A) {
+            return super.dispatchKeyEvent(
+                android.view.KeyEvent(event.downTime, event.eventTime, event.action, android.view.KeyEvent.KEYCODE_DPAD_CENTER, event.repeatCount),
+            )
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     /** The Larry Slop Software intro (with its chime), over the home screen while it loads, then a fade out. */
     private fun showSplash() {
         val root = findViewById<FrameLayout>(android.R.id.content) ?: return
@@ -148,6 +158,10 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
         @PerFragment
         @ContributesAndroidInjector(modules = [TVHomeFragment.Module::class])
         abstract fun tvHomeFragment(): TVHomeFragment
+
+        @PerFragment
+        @ContributesAndroidInjector(modules = [com.swordfish.lemuroid.app.tv.home.BigPictureFragment.Module::class])
+        abstract fun bigPictureFragment(): com.swordfish.lemuroid.app.tv.home.BigPictureFragment
 
         @PerFragment
         @ContributesAndroidInjector(modules = [TVGamesFragment.Module::class])
