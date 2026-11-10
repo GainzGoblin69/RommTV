@@ -17,6 +17,8 @@ import androidx.leanback.widget.ObjectAdapter
 import androidx.leanback.widget.OnItemViewClickedListener
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.coroutineScope
+import kotlinx.coroutines.launch
 import androidx.navigation.fragment.findNavController
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.shared.GameInteractor
@@ -44,6 +46,34 @@ class TVHomeFragment : BrowseSupportFragment() {
 
     @Inject
     lateinit var saveSyncManager: SaveSyncManager
+
+    /** The RomM account tile: a connection report (including a cover art test), and a way to sign in again. */
+    private fun showRommStatus() {
+        val context = requireContext()
+        val dialog =
+            android.app.AlertDialog.Builder(context)
+                .setTitle("RomM account")
+                .setMessage("Checking your RomM server…")
+                .setPositiveButton("Close", null)
+                .setNeutralButton("Sign in again") { _, _ ->
+                    startActivity(Intent(context, com.swordfish.lemuroid.app.tv.romm.RommSignInActivity::class.java))
+                }
+                .show()
+        viewLifecycleOwner.lifecycle.coroutineScope.launch {
+            val report =
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val db =
+                        runCatching {
+                            retrogradeDb.query("SELECT COUNT(*), SUM(coverFrontUrl IS NOT NULL), MAX(coverFrontUrl) FROM games", null).use {
+                                it.moveToFirst()
+                                "In the app: ${it.getInt(0)} games, ${it.getInt(1)} with a cover address\nExample: ${it.getString(2) ?: "none"}"
+                            }
+                        }.getOrElse { "In the app: couldn't read (${it.message})" }
+                    com.swordfish.lemuroid.app.tv.romm.RommDiagnostics.report(context.applicationContext) + "\n\n" + db
+                }
+            dialog.setMessage(report)
+        }
+    }
 
     override fun onAttach(context: Context) {
         AndroidSupportInjection.inject(this)
@@ -76,13 +106,7 @@ class TVHomeFragment : BrowseSupportFragment() {
                                 LibraryIndexScheduler.scheduleLibrarySync(
                                     requireContext().applicationContext,
                                 )
-                            TVSettingType.ROMM_ACCOUNT ->
-                                startActivity(
-                                    android.content.Intent(
-                                        requireContext(),
-                                        com.swordfish.lemuroid.app.tv.romm.RommSignInActivity::class.java,
-                                    ),
-                                )
+                            TVSettingType.ROMM_ACCOUNT -> showRommStatus()
                             TVSettingType.SETTINGS -> launchTVSettings()
                             TVSettingType.SHOW_ALL_FAVORITES -> launchFavorites()
                             TVSettingType.SAVE_SYNC ->
