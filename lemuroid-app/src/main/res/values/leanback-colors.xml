@@ -2,4 +2,5 @@
 <resources>
     <color name="leanback_background">#0D1117</color>
     <color name="leanback_foreground">#161C26</color>
+    <color name="leanback_info">#1E2633</color>
 </resources>
