@@ -36,6 +36,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewResponder
+import androidx.compose.foundation.relocation.bringIntoViewResponder
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +87,7 @@ import javax.inject.Inject
  * The page that opens when a game is chosen: what RomM knows about it (summary, time to beat,
  * RetroAchievements, screenshots), Play, and a picker for which RomM save to start from.
  */
+@OptIn(ExperimentalFoundationApi::class)
 class GameDetailActivity : ComponentActivity() {
     @Inject
     lateinit var retrogradeDb: RetrogradeDatabase
@@ -247,16 +255,21 @@ class GameDetailActivity : ComponentActivity() {
         val playFocus = remember { FocusRequester() }
         val scroll = rememberScrollState()
         val scope = rememberCoroutineScope()
-        // Arriving at the button row from below brings the whole top of the page back (title, cover, description).
-        // Moving left and right along the row doesn't scroll at all.
-        var buttonsFocused by remember { mutableStateOf(false) }
-        val toTop: () -> Unit = {
-            scope.launch {
-                // Let the TV's own "show the focused button" scroll finish first, so the two don't fight
-                kotlinx.coroutines.delay(60)
-                scroll.animateScrollTo(0)
+        // Selecting anything in the top section asks the page to show the whole section (from the title down to
+        // the selected button), not just the button. At the top that means no scrolling at all; coming up from
+        // the achievements it means one scroll back to the top. If the section is taller than the screen, the
+        // usual "just show the button" applies, so the buttons never end up off screen.
+        val screenHeightPx = with(LocalDensity.current) { (LocalConfiguration.current.screenHeightDp.dp - 56.dp).toPx() }
+        var headerWidth by remember { mutableStateOf(0f) }
+        val headerResponder =
+            remember(screenHeightPx) {
+                object : BringIntoViewResponder {
+                    override fun calculateRectForParent(localRect: Rect): Rect =
+                        if (localRect.bottom <= screenHeightPx) Rect(0f, 0f, headerWidth, localRect.bottom) else localRect
+
+                    override suspend fun bringChildIntoView(localRect: () -> Rect?) = Unit
+                }
             }
-        }
         LaunchedEffect(current != null) {
             if (current != null) runCatching { playFocus.requestFocus() }
         }
@@ -271,7 +284,13 @@ class GameDetailActivity : ComponentActivity() {
                         .padding(horizontal = 48.dp, vertical = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                Row(
+                    modifier =
+                        Modifier
+                            .onSizeChanged { headerWidth = it.width.toFloat() }
+                            .bringIntoViewResponder(headerResponder),
+                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                ) {
                     RommImage(
                         urls = listOfNotNull(current.coverFrontUrl),
                         description = "Cover",
@@ -310,15 +329,7 @@ class GameDetailActivity : ComponentActivity() {
                             )
                         }
                         Spacer(Modifier.height(4.dp))
-                        Row(
-                            modifier =
-                                Modifier.onFocusChanged {
-                                    if (it.hasFocus && !buttonsFocused) toTop()
-                                    buttonsFocused = it.hasFocus
-                                },
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             TvButton("Play", primary = true, modifier = Modifier.focusRequester(playFocus)) { play(true) }
                             TvButton("Pick a save" + (info?.saves?.size?.takeIf { it > 0 }?.let { " ($it)" } ?: "")) { showSaves = true }
                             if (info != null && supportsMultiplayer(info)) {
