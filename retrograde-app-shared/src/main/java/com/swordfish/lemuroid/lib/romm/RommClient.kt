@@ -73,6 +73,8 @@ data class RommAchievement(
     val badgePath: String?,
     val badgePathLock: String?,
     val order: Int,
+    val numAwarded: Int,
+    val type: String?,
 )
 
 data class RommRomDetail(
@@ -407,6 +409,8 @@ class RommClient(private val session: RommSession) {
                         badgePath = a.optStringOrNull("badge_path"),
                         badgePathLock = a.optStringOrNull("badge_path_lock"),
                         order = a.optInt("display_order"),
+                        numAwarded = a.optInt("num_awarded"),
+                        type = a.optStringOrNull("type"),
                     )
                 }.sortedBy { it.order },
             saves =
@@ -427,17 +431,21 @@ class RommClient(private val session: RommSession) {
         )
     }
 
-    /** The badge ids of the RetroAchievements this RomM user has earned for a game. */
-    fun earnedAchievements(raId: Int): Set<String> {
+    /** The RetroAchievements this RomM user has earned for a game: badge id to the date it was earned. */
+    fun earnedAchievements(raId: Int): Map<String, String> {
         val me = JSONObject(getJson(url("api/users/me").build()))
-        val results = me.optJSONObject("ra_progression")?.optJSONArray("results") ?: return emptySet()
+        val results = me.optJSONObject("ra_progression")?.optJSONArray("results") ?: return emptyMap()
         for (i in 0 until results.length()) {
             val g = results.getJSONObject(i)
             if (g.optInt("rom_ra_id", -1) != raId) continue
-            val earned = g.optJSONArray("earned_achievements") ?: return emptySet()
-            return (0 until earned.length()).mapNotNull { earned.getJSONObject(it).optString("id").ifBlank { null } }.toSet()
+            val earned = g.optJSONArray("earned_achievements") ?: return emptyMap()
+            return (0 until earned.length()).mapNotNull {
+                val e = earned.getJSONObject(it)
+                val id = e.optString("id").ifBlank { null } ?: return@mapNotNull null
+                id to (e.optStringOrNull("date_hardcore") ?: e.optString("date"))
+            }.toMap()
         }
-        return emptySet()
+        return emptyMap()
     }
 
     fun downloadSave(

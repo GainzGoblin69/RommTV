@@ -13,6 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -91,7 +93,11 @@ class GameDetailActivity : ComponentActivity() {
 
     private var game by mutableStateOf<Game?>(null)
     private var detail by mutableStateOf<RommRomDetail?>(null)
-    private var earned by mutableStateOf<Set<String>>(emptySet())
+    private var earned by mutableStateOf<Map<String, String>>(emptyMap())
+    private var failedShots by mutableStateOf<Set<String>>(emptySet())
+    private var earnedFirst by mutableStateOf(false)
+    private var shownAchievement by mutableStateOf<RommAchievement?>(null)
+    private var onUsb by mutableStateOf(false)
     private var status by mutableStateOf("Loading from RomM…")
     private var showSaves by mutableStateOf(false)
     private var busy by mutableStateOf(false)
@@ -113,7 +119,9 @@ class GameDetailActivity : ComponentActivity() {
 
     private fun refreshOnTv() {
         val romId = game?.let { RommSaves.romId(it) } ?: return
-        onTv = RommGameFiles(this).isDownloaded(romId)
+        val files = RommGameFiles(this)
+        onTv = files.isDownloaded(romId)
+        onUsb = onTv && files.isOnUsb(romId)
     }
 
     private fun load(gameId: Int) {
@@ -142,7 +150,7 @@ class GameDetailActivity : ComponentActivity() {
         }
         val raId = detail?.raId ?: return
         if (detail?.achievements.isNullOrEmpty()) return
-        earned = withContext(Dispatchers.IO) { runCatching { client.earnedAchievements(raId) }.getOrDefault(emptySet()) }
+        earned = withContext(Dispatchers.IO) { runCatching { client.earnedAchievements(raId) }.getOrDefault(emptyMap()) }
     }
 
     private fun play(loadSave: Boolean) {
@@ -268,8 +276,6 @@ class GameDetailActivity : ComponentActivity() {
                             fontSize = 32.sp,
                             lineHeight = 36.sp,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
                         )
                         if (info != null) {
                             val meta =
@@ -282,12 +288,10 @@ class GameDetailActivity : ComponentActivity() {
                                 ).joinToString("   ·   ")
                             if (meta.isNotBlank()) Text(meta, color = Quiet, fontSize = 13.sp)
                             Text(
-                                info.summary ?: "RomM has no description for this game.",
+                                info.summary?.let { clean(it) } ?: "RomM has no description for this game.",
                                 color = Color(0xFFC9D2DD),
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp,
-                                maxLines = 4,
-                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                         Spacer(Modifier.height(4.dp))
@@ -302,43 +306,60 @@ class GameDetailActivity : ComponentActivity() {
                 }
 
                 if (info != null) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        StatCard("TIME TO BEAT", timeToBeat(info), "From HowLongToBeat", Modifier.weight(1f))
+                    Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        StatCard("TIME TO BEAT", timeToBeat(info), "From HowLongToBeat", Modifier.weight(1f).fillMaxHeight())
                         StatCard(
                             "ACHIEVEMENTS",
                             if (info.achievements.isEmpty()) "None for this game" else "${earnedCount(info)} of ${info.achievements.size} earned",
                             "RetroAchievements",
-                            Modifier.weight(1f),
+                            Modifier.weight(1f).fillMaxHeight(),
                         )
                         StatCard(
                             "SAVES IN ROMM",
                             if (info.saves.isEmpty()) "None yet" else "${info.saves.size} save" + (if (info.saves.size == 1) "" else "s"),
                             info.lastPlayed?.let { "Last played ${date(it)}" } ?: "Not played yet",
-                            Modifier.weight(1f),
+                            Modifier.weight(1f).fillMaxHeight(),
                         )
                         StatCard(
                             "ON THIS TV",
-                            if (onTv) "Downloaded" else "Downloads when you play",
+                            if (onUsb) "On the USB drive" else if (onTv) "Downloaded" else "Downloads when you play",
                             size(info.sizeBytes),
-                            Modifier.weight(1f),
+                            Modifier.weight(1f).fillMaxHeight(),
                         )
                     }
 
-                    if (info.screenshots.isNotEmpty()) {
+                    // Screenshots the server can't deliver are left out instead of showing empty boxes
+                    val shots = info.screenshots.filter { it !in failedShots }
+                    if (shots.isNotEmpty()) {
                         SectionTitle("SCREENSHOTS")
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(info.screenshots) { path ->
+                            items(shots) { path ->
                                 FocusCard(Modifier.width(264.dp).height(150.dp)) {
-                                    RommImage(client.imageCandidates(path), "Screenshot", Modifier.fillMaxSize())
+                                    RommImage(client.imageCandidates(path), "Screenshot", Modifier.fillMaxSize()) {
+                                        failedShots = failedShots + path
+                                    }
                                 }
                             }
                         }
                     }
 
                     if (info.achievements.isNotEmpty()) {
-                        SectionTitle("ACHIEVEMENTS  ·  ${earnedCount(info)} / ${info.achievements.size}")
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(info.achievements) { a -> AchievementCard(a, isEarned(a)) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            SectionTitle("ACHIEVEMENTS  ·  ${earnedCount(info)} / ${info.achievements.size}")
+                            TvButton(if (earnedFirst) "Sort: Earned first" else "Sort: Game order") { earnedFirst = !earnedFirst }
+                        }
+                        val ordered = if (earnedFirst) info.achievements.sortedByDescending { isEarned(it) } else info.achievements
+                        // A grid that scrolls down with the page, three across
+                        ordered.chunked(3).forEach { rowItems ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                rowItems.forEach { a ->
+                                    AchievementCard(a, isEarned(a), Modifier.weight(1f).fillMaxHeight()) { shownAchievement = a }
+                                }
+                                repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                            }
                         }
                     }
                     Spacer(Modifier.height(12.dp))
@@ -347,9 +368,74 @@ class GameDetailActivity : ComponentActivity() {
         }
 
         if (showSaves && current != null) SavePicker(info?.saves.orEmpty())
+        shownAchievement?.let { AchievementDetail(it) }
     }
 
-    private fun isEarned(a: RommAchievement): Boolean = a.badgeId?.let { earned.contains(it) } ?: false
+    /** RomM descriptions sometimes carry line breaks as stray "rn" letters; turn them back into paragraphs. */
+    private fun clean(text: String): String =
+        text.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\r\n", "\n")
+            .replace(Regex("(?<=[.!?\"”)])(?:rn)+(?=[A-Z\"“(])"), "\n\n")
+            .trim()
+
+    /** One achievement in full: large badge, whether it's earned and when, points, and the whole description. */
+    @Composable
+    private fun AchievementDetail(a: RommAchievement) {
+        val close = remember { FocusRequester() }
+        LaunchedEffect(a) { runCatching { close.requestFocus() } }
+        val isEarned = isEarned(a)
+        Dialog(onDismissRequest = { shownAchievement = null }) {
+            Column(
+                modifier =
+                    Modifier
+                        .width(560.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Panel)
+                        .border(1.dp, Line, RoundedCornerShape(12.dp))
+                        .padding(22.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    RommImage(badgeUrls(a, isEarned), null, Modifier.size(112.dp).clip(RoundedCornerShape(10.dp)))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(a.title, color = TextColor, fontSize = 22.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (isEarned) {
+                                "Earned" + (a.badgeId?.let { earned[it] }?.let { date(it) }?.takeIf { it.isNotBlank() }?.let { " on $it" } ?: "")
+                            } else {
+                                "Locked"
+                            },
+                            color = if (isEarned) Lime else Quiet,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            listOfNotNull(
+                                "${a.points} points",
+                                a.type?.takeIf { it.isNotBlank() }?.replace('_', ' ')?.replaceFirstChar { it.uppercase() },
+                                a.numAwarded.takeIf { it > 0 }?.let { "Earned by $it players" },
+                            ).joinToString("   ·   "),
+                            color = Quiet,
+                            fontSize = 13.sp,
+                        )
+                    }
+                }
+                Text(a.description, color = Color(0xFFC9D2DD), fontSize = 15.sp, lineHeight = 21.sp)
+                TvButton("Close", modifier = Modifier.focusRequester(close)) { shownAchievement = null }
+            }
+        }
+    }
+
+    private fun badgeUrls(
+        a: RommAchievement,
+        isEarned: Boolean,
+    ): List<String> =
+        if (isEarned) {
+            listOfNotNull(a.badgeUrl) + client.imageCandidates(a.badgePath)
+        } else {
+            listOfNotNull(a.badgeUrlLock) + client.imageCandidates(a.badgePathLock) + listOfNotNull(a.badgeUrl)
+        }
+
+    private fun isEarned(a: RommAchievement): Boolean = a.badgeId?.let { earned.containsKey(it) } ?: false
 
     private fun earnedCount(info: RommRomDetail) = info.achievements.count { isEarned(it) }
 
@@ -414,28 +500,24 @@ class GameDetailActivity : ComponentActivity() {
     private fun AchievementCard(
         a: RommAchievement,
         isEarned: Boolean,
+        modifier: Modifier = Modifier,
+        onClick: () -> Unit,
     ) {
-        val badge =
-            if (isEarned) {
-                listOfNotNull(a.badgeUrl) + client.imageCandidates(a.badgePath)
-            } else {
-                listOfNotNull(a.badgeUrlLock) + client.imageCandidates(a.badgePathLock) + listOfNotNull(a.badgeUrl)
-            }
-        FocusCard(Modifier.width(250.dp).height(84.dp)) {
+        FocusCard(modifier, onClick = onClick) {
             Row(
-                Modifier.fillMaxSize().padding(10.dp).alpha(if (isEarned) 1f else 0.6f),
+                Modifier.fillMaxWidth().padding(10.dp).alpha(if (isEarned) 1f else 0.6f),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RommImage(badge, null, Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)))
+                RommImage(badgeUrls(a, isEarned), null, Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)))
                 Column {
-                    Text(a.title, color = TextColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(a.title, color = TextColor, fontSize = 13.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold)
                     Text(
                         (if (isEarned) "Earned" else "Locked") + "  ·  ${a.points} pts",
                         color = if (isEarned) Lime else Quiet,
                         fontSize = 11.sp,
                     )
-                    Text(a.description, color = Quiet, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(a.description, color = Quiet, fontSize = 11.sp, lineHeight = 14.sp)
                 }
             }
         }
@@ -463,8 +545,8 @@ class GameDetailActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Text(label, color = Quiet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp)
-            Text(value, color = TextColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(note, color = Quiet, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(value, color = TextColor, fontSize = 15.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold)
+            Text(note, color = Quiet, fontSize = 11.sp, lineHeight = 14.sp)
         }
     }
 
@@ -518,6 +600,7 @@ class GameDetailActivity : ComponentActivity() {
         urls: List<String>,
         description: String?,
         modifier: Modifier = Modifier,
+        onFailed: () -> Unit = {},
     ) {
         var index by remember(urls) { mutableStateOf(0) }
         if (urls.isEmpty()) {
@@ -529,7 +612,7 @@ class GameDetailActivity : ComponentActivity() {
             contentDescription = description,
             contentScale = ContentScale.Crop,
             modifier = modifier.background(Raised),
-            onError = { if (index < urls.lastIndex) index++ },
+            onError = { if (index < urls.lastIndex) index++ else onFailed() },
         )
     }
 
