@@ -42,7 +42,20 @@ object CoverUtils {
                     .build()
             }
             .okHttpClient {
+                val session = com.swordfish.lemuroid.lib.romm.RommSession(applicationContext)
                 OkHttpClient.Builder()
+                    // Cover art from the RomM server is sent with this TV's sign-in, in case the server
+                    // only shows images to signed-in users (the web page has the browser's sign-in)
+                    .addInterceptor { chain ->
+                        val request = chain.request()
+                        val token = session.token
+                        val serverHost = runCatching { android.net.Uri.parse(session.serverUrl).host }.getOrNull()
+                        if (token != null && serverHost != null && request.url.host.equals(serverHost, true)) {
+                            chain.proceed(request.newBuilder().header("Authorization", "Bearer $token").build())
+                        } else {
+                            chain.proceed(request)
+                        }
+                    }
                     .addNetworkInterceptor(ThrottleFailedThumbnailsInterceptor)
                     .build()
             }
