@@ -46,17 +46,20 @@ class LemuroidInputDeviceGamePad(private val device: InputDevice) : LemuroidInpu
     }
 
     override fun isEnabledByDefault(appContext: Context): Boolean {
+        // On a TV every real controller should just work in games, whatever buttons it reports
+        if (!appContext.packageManager.hasSystemFeature("android.hardware.touchscreen")) return true
         return device.supportsAllKeys(MINIMAL_KEYS_DEFAULT_ENABLED)
     }
 
     override fun getSupportedShortcuts(): List<GameShortcutType> = GameShortcutType.values().toList()
 
     override fun isSupported(): Boolean {
+        // Many Bluetooth controllers don't report every face button, so either a controller slot
+        // or an A button is enough (a TV remote has neither)
         return sequenceOf(
             device.sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD,
-            device.supportsAllKeys(MINIMAL_SUPPORTED_KEYS),
             device.isVirtual.not(),
-            device.controllerNumber > 0,
+            device.controllerNumber > 0 || device.hasKeys(KeyEvent.KEYCODE_BUTTON_A).all { it },
         ).all { it }
     }
 

@@ -237,7 +237,8 @@ class InputDeviceManager(
                 .filterNotNull()
                 .filter { it.getLemuroidInputDevice().isSupported() }
                 .filter { it.name !in BLACKLISTED_DEVICES }
-                .sortedBy { it.controllerNumber }
+                // Controllers in their numbered slots first (player 1, 2...), anything without a slot after
+                .sortedBy { if (it.controllerNumber > 0) it.controllerNumber else Int.MAX_VALUE }
         }.getOrNull() ?: listOf()
     }
 
