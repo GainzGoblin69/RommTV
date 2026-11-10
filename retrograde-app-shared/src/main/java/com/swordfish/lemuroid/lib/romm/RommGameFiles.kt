@@ -59,6 +59,20 @@ class RommGameFiles(context: Context) {
 
     fun isDownloaded(romId: Int): Boolean = findReady(romId) != null
 
+    /** The ids of every game downloaded to the TV or the USB drive (kept for a few seconds, for drawing tiles). */
+    fun downloadedIds(): Set<Int> {
+        val now = System.currentTimeMillis()
+        idsCache?.let { (at, ids) -> if (now - at < 5_000) return ids }
+        val ids =
+            storages().flatMap { storage ->
+                storage.root.listFiles()
+                    ?.filter { it.isDirectory && File(it, READY_MARKER).exists() }
+                    ?.mapNotNull { it.name.toIntOrNull() } ?: emptyList()
+            }.toSet()
+        idsCache = now to ids
+        return ids
+    }
+
     /** The folder holding a finished download of this game, on whichever storage it's on. */
     private fun findReady(romId: Int): File? =
         storages().map { File(it.root, romId.toString()) }.firstOrNull { File(it, READY_MARKER).exists() }
@@ -122,6 +136,7 @@ class RommGameFiles(context: Context) {
                         (dir.listFiles()?.filter { it.name != READY_MARKER }?.joinToString(", ") { it.name } ?: "none"),
                 )
         marker.writeText(primary.name)
+        idsCache = null
         lastPrepared = romId to primary
         Timber.i("RomM game $romId ready: ${describe(primary)}")
         return primary
@@ -248,6 +263,7 @@ class RommGameFiles(context: Context) {
 
     /** Deletes the game from the TV and the USB drive. */
     fun remove(romId: Int) {
+        idsCache = null
         storages().forEach { File(it.root, romId.toString()).deleteRecursively() }
     }
 
@@ -313,6 +329,9 @@ class RommGameFiles(context: Context) {
         /** The last game handed to the emulator in this process, so a load error can say which file and clear it. */
         @Volatile
         var lastPrepared: Pair<Int, File>? = null
+
+        @Volatile
+        private var idsCache: Pair<Long, Set<Int>>? = null
 
         fun describe(file: File): String {
             val head =
