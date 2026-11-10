@@ -14,6 +14,10 @@ android {
 }
 
 dependencies {
+    // .7z games from RomM
+    implementation("org.apache.commons:commons-compress:1.27.1")
+    implementation("org.tukaani:xz:1.10")
+
     implementation(project(":retrograde-util"))
     implementation(project(":lemuroid-touchinput"))
 

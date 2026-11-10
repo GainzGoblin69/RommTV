@@ -7,6 +7,7 @@ import com.swordfish.lemuroid.lib.library.SystemID
 import org.json.JSONObject
 import timber.log.Timber
 import java.io.File
+import org.apache.commons.compress.archivers.sevenz.SevenZFile
 import java.util.zip.ZipInputStream
 
 /**
@@ -36,8 +37,12 @@ class RommGameFiles(context: Context) {
         val dir = gameDir(romId)
         val marker = File(dir, READY_MARKER)
         if (marker.exists()) {
-            marker.setLastModified(System.currentTimeMillis())
-            return File(dir, marker.readText().trim())
+            val cached = File(dir, marker.readText().trim())
+            if (cached.exists() && cached.length() > 0) {
+                marker.setLastModified(System.currentTimeMillis())
+                lastPrepared = romId to cached
+                return cached
+            }
         }
 
         dir.deleteRecursively()
@@ -60,15 +65,43 @@ class RommGameFiles(context: Context) {
             client.download(client.romFileUrl(id, name), dest) { done, _ ->
                 onProgress?.invoke(doneBefore + done, total)
             }
+            checkDownload(dest, size)
             doneBefore += size
         }
 
         val keepZipped = systemId == SystemID.FBNEO.dbname || systemId == SystemID.MAME2003PLUS.dbname
-        if (!keepZipped) unzipAll(dir)
+        if (!keepZipped) extractArchives(dir)
 
         val primary = choosePrimary(dir) ?: throw RommException("Couldn't find a playable file in this game")
         marker.writeText(primary.name)
+        lastPrepared = romId to primary
+        Timber.i("RomM game $romId ready: ${describe(primary)}")
         return primary
+    }
+
+    /** A download that came back empty, cut short, or as a web page instead of the game. */
+    private fun checkDownload(
+        file: File,
+        expected: Long,
+    ) {
+        val got = file.length()
+        if (got == 0L) {
+            file.delete()
+            throw RommException(
+                "The server sent an empty file for ${file.name}. " +
+                    "RomM serves downloads through its built-in web server (nginx); check that it's running.",
+            )
+        }
+        if (expected > 0 && got != expected) {
+            file.delete()
+            throw RommException("The download of ${file.name} was incomplete ($got of $expected bytes). Try again.")
+        }
+        val head = file.inputStream().use { input -> ByteArray(64).let { it.copyOf(input.read(it).coerceAtLeast(0)) } }
+        val text = String(head, Charsets.ISO_8859_1).trimStart().lowercase()
+        if (text.startsWith("<!doctype") || text.startsWith("<html") || text.startsWith("{\"detail\"")) {
+            file.delete()
+            throw RommException("The server sent a web page instead of ${file.name}. Check the RomM server address.")
+        }
     }
 
     private fun fetchRom(romId: Int): String {
@@ -84,19 +117,42 @@ class RommGameFiles(context: Context) {
         }
     }
 
-    private fun unzipAll(dir: File) {
-        dir.listFiles()?.filter { it.extension.equals("zip", true) }?.forEach { zip ->
-            runCatching {
-                ZipInputStream(zip.inputStream().buffered()).use { stream ->
-                    while (true) {
-                        val entry = stream.nextEntry ?: break
-                        if (entry.isDirectory) continue
-                        val out = File(dir, File(entry.name).name)
-                        out.outputStream().use { stream.copyTo(it) }
-                    }
-                }
-                zip.delete()
-            }.onFailure { Timber.e(it, "Couldn't unzip ${zip.name}") }
+    /** Most cores can't read compressed games, so .zip and .7z files are unpacked next to them. */
+    private fun extractArchives(dir: File) {
+        dir.listFiles()?.forEach { archive ->
+            when (archive.extension.lowercase()) {
+                "zip" ->
+                    runCatching {
+                        ZipInputStream(archive.inputStream().buffered()).use { stream ->
+                            while (true) {
+                                val entry = stream.nextEntry ?: break
+                                if (entry.isDirectory) continue
+                                File(dir, File(entry.name).name).outputStream().use { stream.copyTo(it) }
+                            }
+                        }
+                        archive.delete()
+                    }.onFailure { throw RommException("Couldn't unpack ${archive.name}: ${it.message}") }
+                "7z" ->
+                    runCatching {
+                        SevenZFile.builder().setFile(archive).get().use { sz ->
+                            val buffer = ByteArray(256 * 1024)
+                            var entry = sz.nextEntry
+                            while (entry != null) {
+                                if (!entry.isDirectory) {
+                                    File(dir, File(entry.name).name).outputStream().use { out ->
+                                        while (true) {
+                                            val n = sz.read(buffer)
+                                            if (n < 0) break
+                                            out.write(buffer, 0, n)
+                                        }
+                                    }
+                                }
+                                entry = sz.nextEntry
+                            }
+                        }
+                        archive.delete()
+                    }.onFailure { throw RommException("Couldn't unpack ${archive.name}: ${it.message}") }
+            }
         }
     }
 
@@ -129,6 +185,19 @@ class RommGameFiles(context: Context) {
     }
 
     companion object {
+        /** The last game handed to the emulator in this process, so a load error can say which file and clear it. */
+        @Volatile
+        var lastPrepared: Pair<Int, File>? = null
+
+        fun describe(file: File): String {
+            val head =
+                runCatching {
+                    file.inputStream().use { input -> ByteArray(8).let { it.copyOf(input.read(it).coerceAtLeast(0)) } }
+                }.getOrDefault(ByteArray(0))
+            val hex = head.joinToString(" ") { "%02x".format(it) }
+            return "${file.name}, ${file.length()} bytes, starts $hex"
+        }
+
         private const val READY_MARKER = ".ready"
         private val PRIMARY_ORDER = listOf("m3u", "cue", "chd", "pbp", "gdi", "ccd", "iso", "cso")
 

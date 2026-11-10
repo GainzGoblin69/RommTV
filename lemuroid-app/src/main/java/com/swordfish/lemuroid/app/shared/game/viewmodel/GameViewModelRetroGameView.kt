@@ -349,7 +349,18 @@ class GameViewModelRetroGameView(
                 else -> GameLoaderError.Generic
             }
 
-        sideEffects.requestFailureFinish(getErrorMessage(gameLoaderError))
+        var message = getErrorMessage(gameLoaderError)
+        if (errorCode == GLRetroView.ERROR_LOAD_GAME) {
+            // Say which file the emulator was given, and drop it so the next try downloads it again
+            com.swordfish.lemuroid.lib.romm.RommGameFiles.lastPrepared?.let { (romId, file) ->
+                message =
+                    "The emulator couldn't open this game.\n\nFile: " +
+                        com.swordfish.lemuroid.lib.romm.RommGameFiles.describe(file) +
+                        "\n\nIt has been removed from the TV, so the next try downloads it again."
+                com.swordfish.lemuroid.lib.romm.RommGameFiles(appContext).remove(romId)
+            }
+        }
+        sideEffects.requestFailureFinish(message)
     }
 
     private fun getErrorMessage(gameError: GameLoaderError): String {
