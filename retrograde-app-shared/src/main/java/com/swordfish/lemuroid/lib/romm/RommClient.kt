@@ -252,12 +252,18 @@ class RommClient(private val session: RommSession) {
         }
     }
 
+    /**
+     * The cover's public address on the site RomM scraped it from (SteamGridDB, IGDB...) comes first: some RomM
+     * installs (Whatbox's) don't serve their saved copies under /assets/romm/resources. The server's copy is the
+     * fallback, for covers that were uploaded by hand.
+     */
     fun coverUrl(rom: RommRom): String? {
+        rom.coverUrl?.takeIf { it.startsWith("http") }?.let { return it }
         val path = rom.coverPath
         if (!path.isNullOrBlank()) {
             return if (path.startsWith("http")) path else session.serverUrl + "/" + path.trimStart('/')
         }
-        return rom.coverUrl?.takeIf { it.startsWith("http") }
+        return null
     }
 
     fun romFileUrl(
