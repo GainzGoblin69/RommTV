@@ -84,18 +84,26 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
         AppUpdater.checkInBackground(this, lifecycleScope)
     }
 
-    /** The Larry Slop Software intro, over the home screen while it loads, then a fade out. */
+    /** The Larry Slop Software intro (with its chime), over the home screen while it loads, then a fade out. */
     private fun showSplash() {
         val root = findViewById<FrameLayout>(android.R.id.content) ?: return
         val face = runCatching { BitmapFactory.decodeResource(resources, R.drawable.larry_head) }.getOrNull()
         val splash = SplashView(this, face)
-        splash.isClickable = true
-        splash.isFocusable = true
         root.addView(splash, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-        splash.requestFocus()
-        splash.postDelayed({
-            splash.animate().alpha(0f).setDuration(400).withEndAction { root.removeView(splash) }.start()
-        }, SplashView.MIN_SHOW_MS)
+        val shownAt = System.currentTimeMillis()
+        val hide =
+            object : Runnable {
+                override fun run() {
+                    // the whole animation plus a moment on the finished logo (never longer than 20 seconds)
+                    val ready = splash.elapsed >= SplashView.LENGTH + 0.8f
+                    if (!ready && System.currentTimeMillis() - shownAt < 20_000) {
+                        splash.postDelayed(this, 100)
+                        return
+                    }
+                    splash.fadeOut { runOnUiThread { root.removeView(splash) } }
+                }
+            }
+        splash.postDelayed(hide, 300)
     }
 
     override fun onActivityResult(
