@@ -99,6 +99,7 @@ class GameDetailActivity : ComponentActivity() {
     private var earnedFirst by mutableStateOf(false)
     private var shownAchievement by mutableStateOf<RommAchievement?>(null)
     private var onUsb by mutableStateOf(false)
+    private var openRooms by mutableStateOf(0)
     private var status by mutableStateOf("Loading from RomM…")
     private var showSaves by mutableStateOf(false)
     private var busy by mutableStateOf(false)
@@ -149,6 +150,7 @@ class GameDetailActivity : ComponentActivity() {
             Timber.e(it, "Couldn't load game details")
             status = "Couldn't load details from RomM: ${it.message}"
         }
+        openRooms = withContext(Dispatchers.IO) { runCatching { client.netplayRooms(romId) }.getOrDefault(0) }
         val raId = detail?.raId ?: return
         if (detail?.achievements.isNullOrEmpty()) return
         earned = withContext(Dispatchers.IO) { runCatching { client.earnedAchievements(raId) }.getOrDefault(emptyMap()) }
@@ -303,6 +305,12 @@ class GameDetailActivity : ComponentActivity() {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             TvButton("Play", primary = true, modifier = Modifier.focusRequester(playFocus), onFocused = toTop) { play(true) }
                             TvButton("Pick a save" + (info?.saves?.size?.takeIf { it > 0 }?.let { " ($it)" } ?: ""), onFocused = toTop) { showSaves = true }
+                            if (info != null && supportsMultiplayer(info)) {
+                                TvButton(
+                                    "Play online" + (if (openRooms > 0) " ($openRooms room" + (if (openRooms == 1) "" else "s") + " open)" else ""),
+                                    onFocused = toTop,
+                                ) { NetplayActivity.launch(this@GameDetailActivity, info.id) }
+                            }
                             TvButton(if (favorite) "★ Favorite" else "☆ Favorite", onFocused = toTop) { toggleFavorite() }
                             if (onTv) TvButton("Remove from this TV", onFocused = toTop) { removeFromTv() }
                         }
@@ -439,6 +447,14 @@ class GameDetailActivity : ComponentActivity() {
         } else {
             listOfNotNull(a.badgeUrlLock) + client.imageCandidates(a.badgePathLock) + listOfNotNull(a.badgeUrl)
         }
+
+    /** Multiplayer when RomM says so; shown too when RomM has no player information for the game. */
+    private fun supportsMultiplayer(info: RommRomDetail): Boolean {
+        val maxPlayers = Regex("\\d+").findAll(info.playerCount ?: "").mapNotNull { it.value.toIntOrNull() }.maxOrNull() ?: 0
+        val modes = info.gameModes.map { it.lowercase() }
+        if (maxPlayers > 1 || modes.any { "multi" in it || "co-op" in it || "coop" in it || "split" in it || "versus" in it }) return true
+        return modes.isEmpty() && maxPlayers == 0
+    }
 
     private fun isEarned(a: RommAchievement): Boolean = a.badgeId?.let { earned.containsKey(it) } ?: false
 

@@ -85,6 +85,7 @@ data class RommRomDetail(
     val summary: String?,
     val genres: List<String>,
     val companies: List<String>,
+    val gameModes: List<String>,
     val releaseDate: Long?,
     val rating: Double?,
     val playerCount: String?,
@@ -388,6 +389,7 @@ class RommClient(private val session: RommSession) {
             summary = r.optStringOrNull("summary"),
             genres = strings(meta, "genres"),
             companies = strings(meta, "companies"),
+            gameModes = strings(meta, "game_modes"),
             releaseDate = meta?.let { if (it.isNull("first_release_date")) null else it.optLong("first_release_date") },
             rating = meta?.let { if (it.isNull("average_rating")) null else it.optDouble("average_rating") },
             playerCount = meta?.optStringOrNull("player_count"),
@@ -447,6 +449,10 @@ class RommClient(private val session: RommSession) {
         }
         return emptyMap()
     }
+
+    /** How many netplay rooms are open for a game right now. */
+    fun netplayRooms(romId: Int): Int =
+        JSONObject(getJson(url("api/netplay/list").addQueryParameter("game_id", romId.toString()).build())).length()
 
     fun downloadSave(
         saveId: Int,

@@ -122,6 +122,13 @@
             android:theme="@style/LemuroidLeanbackTheme" />
 
         <activity
+            android:name=".app.tv.romm.NetplayActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:theme="@style/LemuroidLeanbackTheme" />
+
+        <activity
             android:name=".app.tv.romm.GameDetailActivity"
             android:exported="false"
             android:theme="@style/LemuroidLeanbackTheme" />
