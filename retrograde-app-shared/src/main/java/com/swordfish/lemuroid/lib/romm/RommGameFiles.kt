@@ -271,10 +271,16 @@ class RommGameFiles(context: Context) {
      * Moves a downloaded game from the TV to the USB drive: copies it, checks the copy, then deletes the original.
      * Returns false (and leaves the game where it was) if it doesn't fit.
      */
-    fun moveToUsb(romId: Int): Boolean = move(romId, tvStorage, usbStorage ?: return false)
+    fun moveToUsb(romId: Int): Boolean {
+        val usb = usbStorage ?: return false
+        return move(romId, tvStorage, usb)
+    }
 
     /** Moves a game from the USB drive back to the TV. */
-    fun moveToTv(romId: Int): Boolean = move(romId, usbStorage ?: return false, tvStorage)
+    fun moveToTv(romId: Int): Boolean {
+        val usb = usbStorage ?: return false
+        return move(romId, usb, tvStorage)
+    }
 
     private fun move(
         romId: Int,
