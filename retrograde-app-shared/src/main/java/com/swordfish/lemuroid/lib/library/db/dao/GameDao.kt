@@ -70,6 +70,9 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE systemId IN (:systemIds) ORDER BY COALESCE(customName, title) ASC, id DESC")
     suspend fun listBySystems(systemIds: List<String>): List<Game>
 
+    @Query("SELECT * FROM games ORDER BY COALESCE(customName, title) ASC")
+    suspend fun listAll(): List<Game>
+
     @Query("SELECT * FROM games ORDER BY id DESC LIMIT :limit")
     fun selectLastAdded(limit: Int): Flow<List<Game>>
 

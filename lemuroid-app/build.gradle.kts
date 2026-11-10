@@ -104,6 +104,7 @@ dependencies {
     implementation(deps.libs.material)
     implementation(deps.libs.coil.coil)
     implementation(deps.libs.coil.coilCompose)
+    implementation("io.coil-kt:coil-svg:2.6.0")
     implementation(deps.libs.androidx.appcompat.constraintLayout)
     implementation(deps.libs.androidx.activity.activity)
     implementation(deps.libs.androidx.activity.activityKtx)

@@ -39,6 +39,7 @@ import dagger.android.support.AndroidSupportInjectionModule
         LibraryIndexWork.Module::class,
         SaveSyncWork.Module::class,
         ChannelUpdateWork.Module::class,
+        com.swordfish.lemuroid.app.tv.romm.RommSyncRetryWork.Module::class,
         CoreUpdateWork.Module::class,
         CacheCleanerWork.Module::class,
         LemuroidTVApplicationModule::class,

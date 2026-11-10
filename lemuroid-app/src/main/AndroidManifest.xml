@@ -129,6 +129,11 @@
             android:theme="@style/LemuroidLeanbackTheme" />
 
         <activity
+            android:name=".app.tv.romm.ConsoleControlsActivity"
+            android:exported="false"
+            android:theme="@style/LemuroidLeanbackTheme" />
+
+        <activity
             android:name=".app.tv.romm.GameDetailActivity"
             android:exported="false"
             android:theme="@style/LemuroidLeanbackTheme" />

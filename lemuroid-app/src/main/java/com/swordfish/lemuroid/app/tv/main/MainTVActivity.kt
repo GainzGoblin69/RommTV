@@ -75,6 +75,8 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
             if (session.isSignedIn) {
                 // Pick up anything added to RomM since last time
                 LibraryIndexScheduler.scheduleLibrarySync(applicationContext)
+                // Upload any saves that couldn't reach RomM last time
+                com.swordfish.lemuroid.app.tv.romm.RommSyncRetryWork.enqueueIfPending(applicationContext)
             }
         }
         if (!session.isSignedIn) {

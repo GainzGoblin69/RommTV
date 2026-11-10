@@ -121,6 +121,7 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
 
     /**
      * After playing: uploads the TV's save if it changed, uploads changed states, and reports the play time.
+     * Anything that doesn't get through (no Wi-Fi, server down) is queued and retried in the background.
      * Returns a line for the game page, or null when there's nothing to say.
      */
     suspend fun afterPlay(
@@ -131,12 +132,43 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
         endMillis: Long,
         durationMillis: Long,
     ): String? {
-        val notes = mutableListOf<String>()
         val play =
             RommPlaySession(info.id, SLOT, startMillis, endMillis, durationMillis.coerceAtLeast(1000))
                 .takeIf { endMillis - startMillis >= 1000 }
-        val device = runCatching { deviceId() }.getOrNull()
-        var reported = false
+        val plays = pendingPlays(game.fileUri) + listOfNotNull(play)
+        val result = upload(game, info, coreID, plays)
+        if (result.done) {
+            clearPending(game.fileUri)
+        } else {
+            queue(game.fileUri, if (result.playsReported) emptyList() else plays)
+        }
+        return result.notes.joinToString(" ").ifBlank { null }
+    }
+
+    /** Retries a game whose upload didn't get through. True when everything is now on RomM. */
+    suspend fun retry(
+        game: Game,
+        info: RommRomDetail,
+        coreID: CoreID,
+    ): Boolean {
+        val plays = pendingPlays(game.fileUri)
+        val result = upload(game, info, coreID, plays)
+        if (result.done) clearPending(game.fileUri) else queue(game.fileUri, if (result.playsReported) emptyList() else plays)
+        return result.done
+    }
+
+    private class Uploaded(val notes: List<String>, val done: Boolean, val playsReported: Boolean)
+
+    private suspend fun upload(
+        game: Game,
+        info: RommRomDetail,
+        coreID: CoreID,
+        plays: List<RommPlaySession>,
+    ): Uploaded {
+        val notes = mutableListOf<String>()
+        var saveOk = false
+        var reported = plays.isEmpty()
+        val device = runCatching { deviceId() }.onFailure { Timber.e(it, "Couldn't register this TV") }.getOrNull()
 
         if (device != null) {
             runCatching {
@@ -145,6 +177,7 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
                 val op = plan.operations.firstOrNull { it.slot == SLOT && it.action != "no_op" }
                 var completed = 0
                 var failed = 0
+                saveOk = true
                 // The TV just played, so its save is the one to keep. If RomM's also changed meanwhile,
                 // RomM keeps that version in the slot's history.
                 if (local != null && (op?.action == "upload" || op?.action == "conflict")) {
@@ -154,23 +187,73 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
                             notes += "Your save was synced to RomM."
                         }.onFailure {
                             failed++
-                            notes += "Your save is on this TV, but uploading it to RomM failed: ${it.message}"
+                            saveOk = false
+                            Timber.e(it, "Save upload failed")
                         }
                 }
-                client.completeSync(plan.sessionId, completed, failed, listOfNotNull(play))
-                reported = true
+                runCatching {
+                    client.completeSync(plan.sessionId, completed, failed, plays)
+                    reported = true
+                }.onFailure { Timber.e(it, "Couldn't close the sync session") }
             }.onFailure { Timber.e(it, "Sync after play failed") }
         }
-        if (!reported && play != null) {
-            runCatching { client.reportPlaySessions(device, listOf(play)) }
+        if (!reported) {
+            runCatching { client.reportPlaySessions(device, plays) }
+                .onSuccess { reported = true }
                 .onFailure { Timber.e(it, "Couldn't report play time") }
         }
 
         val states = runCatching { uploadStates(game, info, coreID) }.getOrElse { Timber.e(it, "State upload failed"); -1 }
         if (states > 0) notes += "$states save state${if (states == 1) "" else "s"} synced to RomM."
-        if (states < 0) notes += "Your save states couldn't be uploaded to RomM."
-        return notes.joinToString(" ").ifBlank { null }
+
+        val done = saveOk && states >= 0 && reported
+        if (!done) notes += "Couldn't reach RomM to sync everything. It's saved on this TV and will upload automatically when RomM is reachable."
+        return Uploaded(notes, done, reported)
     }
+
+    // ---- the retry queue: games whose save, states or play time haven't reached RomM yet
+
+    fun pendingGames(): Set<String> = prefs.getStringSet(KEY_PENDING, emptySet())!!.toSet()
+
+    private fun queue(
+        fileUri: String,
+        plays: List<RommPlaySession>,
+    ) {
+        val array = org.json.JSONArray()
+        plays.forEach {
+            array.put(
+                org.json.JSONObject()
+                    .put("rom", it.romId)
+                    .put("start", it.startMillis)
+                    .put("end", it.endMillis)
+                    .put("duration", it.durationMillis),
+            )
+        }
+        prefs.edit()
+            .putStringSet(KEY_PENDING, pendingGames() + fileUri)
+            .putString(KEY_PLAYS + fileUri, array.toString())
+            .commit()
+        RommSyncRetryWork.enqueue(appContext)
+    }
+
+    private fun clearPending(fileUri: String) {
+        prefs.edit()
+            .putStringSet(KEY_PENDING, pendingGames() - fileUri)
+            .remove(KEY_PLAYS + fileUri)
+            .commit()
+    }
+
+    private fun pendingPlays(fileUri: String): List<RommPlaySession> =
+        runCatching {
+            val array = org.json.JSONArray(prefs.getString(KEY_PLAYS + fileUri, "[]"))
+            (0 until array.length()).map { i ->
+                val o = array.getJSONObject(i)
+                RommPlaySession(o.getInt("rom"), SLOT, o.getLong("start"), o.getLong("end"), o.getLong("duration"))
+            }
+        }.getOrDefault(emptyList())
+
+    /** Forgets a queued game that no longer exists in the library. */
+    fun dropPending(fileUri: String) = clearPending(fileUri)
 
     /** A specific RomM save, chosen in the picker, replaces the TV's. */
     fun useServerSave(
@@ -295,9 +378,15 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
 
     companion object {
         private const val PREFS = "romm_sync"
+        private const val KEY_PENDING = "pending_games"
+        private const val KEY_PLAYS = "pending_plays:"
 
         /** The web player's main save slot; using the same one is what makes TV and website share a save. */
         const val SLOT = "autosave"
+
+        fun hasPending(context: Context): Boolean =
+            !context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getStringSet(KEY_PENDING, emptySet()).isNullOrEmpty()
 
         fun romId(game: Game): Int? =
             Uri.parse(game.fileUri).takeIf { it.scheme == RommGameFiles.SCHEME }?.let { RommGameFiles.romId(it) }

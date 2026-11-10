@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -96,6 +97,7 @@ class BigPictureFragment : Fragment() {
         PLATFORMS("Platforms"),
         INSTALLED("Installed"),
         SETTINGS("Settings"),
+        SEARCH("Search"),
     }
 
     private enum class LibraryFilter(val label: String) {
@@ -121,6 +123,11 @@ class BigPictureFragment : Fragment() {
     private var usbConnected by mutableStateOf(false)
     private var installedSort by mutableStateOf(InstalledSort.SIZE)
 
+    private var searchGames by mutableStateOf<List<Game>?>(null)
+    private var searchQuery by mutableStateOf("")
+    private var searchSystem by mutableStateOf<String?>(null)
+    private var recentSearches by mutableStateOf<List<String>>(emptyList())
+
     private val back =
         object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
@@ -142,6 +149,7 @@ class BigPictureFragment : Fragment() {
         tab = next
         updateBack()
         if (next == Tab.INSTALLED) refreshInstalled()
+        if (next == Tab.SEARCH) loadSearchGames()
     }
 
     override fun onAttach(context: Context) {
@@ -227,6 +235,7 @@ class BigPictureFragment : Fragment() {
                 tab == Tab.HOME -> Home()
                 tab == Tab.PLATFORMS -> Platforms()
                 tab == Tab.INSTALLED -> Installed()
+                tab == Tab.SEARCH -> Search()
                 else -> Settings()
             }
         }
@@ -250,13 +259,13 @@ class BigPictureFragment : Fragment() {
             Spacer(Modifier.width(4.dp))
             Text("RomM TV", color = TextColor, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(22.dp))
-            Tab.values().forEach { t ->
+            Tab.values().filter { it != Tab.SEARCH }.forEach { t ->
                 TabButton(t.label, selected = tab == t, modifier = if (t == Tab.HOME) Modifier.focusRequester(first) else Modifier) { go(t) }
             }
             Spacer(Modifier.weight(1f))
             if (home.indexInProgress) Text("Syncing library…", color = Lime, fontSize = 13.sp)
             Spacer(Modifier.width(10.dp))
-            TabButton("Search", selected = false) { findNavController().navigate(R.id.navigation_search) }
+            TabButton("Search", selected = tab == Tab.SEARCH) { go(Tab.SEARCH) }
         }
     }
 
@@ -381,18 +390,55 @@ class BigPictureFragment : Fragment() {
         modifier: Modifier = Modifier,
     ) {
         FocusBox(modifier.height(84.dp), onClick = { openLibrary(system) }) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                Text(
-                    system.getName(requireContext()),
-                    color = TextColor,
-                    fontSize = 15.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text("${system.count} game${if (system.count == 1) "" else "s"}", color = Lime, fontSize = 12.sp)
+            Row(
+                Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PlatformIcon(system, Modifier.size(48.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f).fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                    Text(
+                        system.getName(requireContext()),
+                        color = TextColor,
+                        fontSize = 15.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text("${system.count} game${if (system.count == 1) "" else "s"}", color = Lime, fontSize = 12.sp)
+                }
             }
+        }
+    }
+
+    /** The console's logo from RomM (the same icons RomM's website shows), or nothing if RomM has none for it. */
+    @Composable
+    private fun PlatformIcon(
+        system: MetaSystemInfo,
+        modifier: Modifier = Modifier,
+    ) {
+        val context = requireContext()
+        val candidates =
+            remember(system) {
+                val server = com.swordfish.lemuroid.lib.romm.RommSession(context).serverUrl
+                system.metaSystem.systemIDs.flatMap { PlatformIcons.slugs(it) }.distinct()
+                    .flatMap { listOf("$server/assets/platforms/$it.svg", "$server/assets/platforms/$it.ico") }
+            }
+        var index by remember(system) { mutableStateOf(0) }
+        Box(modifier, contentAlignment = Alignment.Center) {
+            val url = candidates.getOrNull(index) ?: return@Box
+            AsyncImage(
+                model =
+                    coil.request.ImageRequest.Builder(context)
+                        .data(url)
+                        .apply { if (url.endsWith(".svg")) decoderFactory(coil.decode.SvgDecoder.Factory()) }
+                        .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+                onError = { index++ },
+            )
         }
     }
 
@@ -455,6 +501,170 @@ class BigPictureFragment : Fragment() {
             }
         }
     }
+
+    // ---- Search
+
+    private fun loadSearchGames() {
+        val context = context?.applicationContext ?: return
+        recentSearches = GameSearch.recent(context)
+        viewLifecycleOwner.lifecycleScope.launch {
+            searchGames = withContext(Dispatchers.IO) { retrogradeDb.gameDao().listAll() }
+        }
+    }
+
+    private fun rememberSearch(query: String) {
+        val context = context?.applicationContext ?: return
+        if (query.isBlank()) return
+        recentSearches = GameSearch.remember(context, query)
+    }
+
+    /**
+     * Search across every platform as you type. Results are a cover grid, best matches first, and can be
+     * narrowed to one platform. With nothing typed it shows your recent searches and recently played games.
+     */
+    @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+    @Composable
+    private fun Search() {
+        val context = requireContext()
+        val focus = androidx.compose.ui.platform.LocalFocusManager.current
+        val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+        val field = remember { FocusRequester() }
+        LaunchedEffect(Unit) { runCatching { field.requestFocus() } }
+
+        var debounced by remember { mutableStateOf(searchQuery) }
+        LaunchedEffect(searchQuery) {
+            kotlinx.coroutines.delay(250)
+            debounced = searchQuery
+        }
+        val all = searchGames
+        val matches = remember(all, debounced) { if (all == null) emptyList() else GameSearch.search(all, debounced) }
+        val systems = remember(matches) { matches.map { it.systemId }.distinct() }
+        val shown = matches.filter { searchSystem == null || it.systemId == searchSystem }
+
+        Column(Modifier.fillMaxSize().padding(horizontal = 48.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
+                var fieldFocused by remember { mutableStateOf(false) }
+                androidx.compose.foundation.text.BasicTextField(
+                    value = searchQuery,
+                    onValueChange = {
+                        searchQuery = it
+                        searchSystem = null
+                    },
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(color = TextColor, fontSize = 20.sp),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Lime),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                    keyboardActions =
+                        androidx.compose.foundation.text.KeyboardActions(onSearch = {
+                            rememberSearch(searchQuery)
+                            keyboard?.hide()
+                            focus.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+                        }),
+                    modifier =
+                        Modifier
+                            .width(620.dp)
+                            .focusRequester(field)
+                            .onFocusChanged { fieldFocused = it.isFocused }
+                            .onPreviewKeyEvent { e ->
+                                // The D-pad leaves the box downwards to the results, like everywhere else
+                                if (e.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                    e.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                                ) {
+                                    keyboard?.hide()
+                                    rememberSearch(searchQuery)
+                                    focus.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+                                } else {
+                                    false
+                                }
+                            },
+                    decorationBox = { inner ->
+                        Box(
+                            Modifier
+                                .border(2.dp, if (fieldFocused) Lime else Line, RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Panel)
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                        ) {
+                            if (searchQuery.isEmpty()) {
+                                Text("Type a game name. OK opens the keyboard.", color = Quiet, fontSize = 16.sp)
+                            }
+                            inner()
+                        }
+                    },
+                )
+                Spacer(Modifier.width(16.dp))
+                Text(
+                    when {
+                        all == null -> "Loading…"
+                        debounced.isBlank() -> "${all.size} games in your library"
+                        else -> "${shown.size} result${if (shown.size == 1) "" else "s"}"
+                    },
+                    color = Quiet,
+                    fontSize = 14.sp,
+                )
+            }
+
+            if (debounced.isBlank()) {
+                if (recentSearches.isNotEmpty()) {
+                    Text("RECENT SEARCHES", color = Quiet, fontSize = 12.sp, letterSpacing = 1.5.sp, modifier = Modifier.padding(top = 6.dp, bottom = 6.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(recentSearches) { q ->
+                            TabButton(q, selected = false) {
+                                searchQuery = q
+                                searchSystem = null
+                            }
+                        }
+                    }
+                }
+                if (recents.isNotEmpty()) {
+                    Text("RECENTLY PLAYED", color = Quiet, fontSize = 12.sp, letterSpacing = 1.5.sp, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(recents) { game -> GameTile(game) }
+                    }
+                }
+                return@Column
+            }
+
+            if (systems.size > 1) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 10.dp)) {
+                    item { TabButton("All platforms", selected = searchSystem == null) { searchSystem = null } }
+                    items(systems) { id ->
+                        val count = matches.count { it.systemId == id }
+                        TabButton("${systemShortName(context, id)} ($count)", selected = searchSystem == id) { searchSystem = id }
+                    }
+                }
+            }
+            if (shown.isEmpty() && all != null) {
+                Text(
+                    "No games match \"$debounced\". Try fewer or different words.",
+                    color = Quiet,
+                    fontSize = 15.sp,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(7),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 4.dp, bottom = 28.dp, start = 2.dp, end = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                itemsIndexed(shown, key = { _, game -> game.id }) { _, game ->
+                    GameTile(game, fill = true, onClick = {
+                        rememberSearch(searchQuery)
+                        gameInteractor.onGamePlay(game)
+                    })
+                }
+            }
+        }
+    }
+
+    private fun systemShortName(
+        context: Context,
+        systemId: String,
+    ): String =
+        runCatching { context.getString(com.swordfish.lemuroid.lib.library.GameSystem.findById(systemId).shortTitleResId) }
+            .getOrDefault(systemId.uppercase())
 
     // ---- Installed
 
@@ -682,10 +892,15 @@ class BigPictureFragment : Fragment() {
                     Toast.makeText(requireContext(), "Checking for a newer build…", Toast.LENGTH_SHORT).show()
                     AppUpdater.checkInBackground(requireActivity(), viewLifecycleOwner.lifecycleScope)
                 }
+                SettingTile("Controller buttons", "A button layout for each console") {
+                    com.swordfish.lemuroid.app.tv.romm.ConsoleControlsActivity.open(
+                        requireContext(),
+                        home.metaSystems.flatMap { it.metaSystem.systemIDs },
+                    )
+                }
                 SettingTile("Emulator settings", "Controllers, display, cores and saves") {
                     startActivity(Intent(requireContext(), TVSettingsActivity::class.java))
                 }
-                Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -779,6 +994,7 @@ class BigPictureFragment : Fragment() {
                         subtitle ?: GameUtils.getGameSubtitle(requireContext(), game),
                         color = if (ready) Color(0xFFD9F5C8) else Quiet,
                         fontSize = 10.sp,
+                        lineHeight = 13.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -871,7 +1087,7 @@ class BigPictureFragment : Fragment() {
     companion object {
         private val TILE_WIDTH: Dp = 118.dp
         private val TILE_COVER_HEIGHT: Dp = 152.dp
-        private val TILE_INFO_HEIGHT: Dp = 46.dp
+        private val TILE_INFO_HEIGHT: Dp = 60.dp
 
         private val Ground = Color(0xFF0D1117)
         private val Panel = Color(0xFF161C26)

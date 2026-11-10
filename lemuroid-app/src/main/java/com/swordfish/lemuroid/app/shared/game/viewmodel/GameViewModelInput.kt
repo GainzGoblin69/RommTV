@@ -64,6 +64,10 @@ class GameViewModelInput(
     private val keyEventsFlow: MutableSharedFlow<KeyEvent?> = MutableSharedFlow()
     private val motionEventsFlow: MutableSharedFlow<MotionEvent> = MutableSharedFlow()
 
+    /** This console's own button layout, if the player set one up (Settings → Controller buttons). */
+    private val consoleLayout: Map<Int, Int>? =
+        com.swordfish.lemuroid.app.shared.input.ConsoleControls.load(appContext, system.id)
+
     fun getAllTiltConfigurations(): List<TiltConfiguration> {
         return controllerConfigsState.value[0]
             ?.tiltConfigurations
@@ -303,7 +307,10 @@ class GameViewModelInput(
             .safeCollect { (shortcuts, ports, bindings, event) ->
                 val (device, action, keyCode) = event
                 val port = ports(device)
-                val bindKeyCode = bindings(device)[InputKey(keyCode)]?.keyCode ?: keyCode
+                val bindKeyCode =
+                    consoleLayout?.get(keyCode)
+                        ?: bindings(device)[InputKey(keyCode)]?.keyCode
+                        ?: keyCode
 
                 if (port == 0) {
                     if (bindKeyCode == KeyEvent.KEYCODE_BUTTON_MODE && action == KeyEvent.ACTION_DOWN) {
