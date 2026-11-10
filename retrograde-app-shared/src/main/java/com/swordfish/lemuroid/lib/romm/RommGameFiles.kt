@@ -3,6 +3,7 @@ package com.swordfish.lemuroid.lib.romm
 import android.content.Context
 import android.net.Uri
 import android.os.StatFs
+import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.SystemID
 import org.json.JSONObject
 import timber.log.Timber
@@ -50,11 +51,15 @@ class RommGameFiles(context: Context) {
 
         val rom = JSONObject(fetchRom(romId))
         val filesJson = rom.optJSONArray("files")
+        // Only the game itself: skip covers, screenshots, manuals and other extras stored with it
         val files =
-            (0 until (filesJson?.length() ?: 0)).map { i ->
-                val f = filesJson!!.getJSONObject(i)
-                Triple(f.getInt("id"), f.getString("file_name"), f.optLong("file_size_bytes"))
-            }.ifEmpty { throw RommException("This game has no files on the server") }
+            (0 until (filesJson?.length() ?: 0)).map { filesJson!!.getJSONObject(it) }
+                .filter { f ->
+                    val category = if (f.isNull("category")) "game" else f.optString("category", "game")
+                    category == "game" && File(f.getString("file_name")).extension.lowercase() !in EXTRAS
+                }
+                .map { f -> Triple(f.getInt("id"), f.getString("file_name"), f.optLong("file_size_bytes")) }
+                .ifEmpty { throw RommException("This game has no game files on the server, only extras like artwork") }
 
         val total = files.sumOf { it.third }
         makeRoom(total * 2)
@@ -72,7 +77,12 @@ class RommGameFiles(context: Context) {
         val keepZipped = systemId == SystemID.FBNEO.dbname || systemId == SystemID.MAME2003PLUS.dbname
         if (!keepZipped) extractArchives(dir)
 
-        val primary = choosePrimary(dir) ?: throw RommException("Couldn't find a playable file in this game")
+        val primary =
+            choosePrimary(dir, systemId)
+                ?: throw RommException(
+                    "None of this game's files can be played as ${systemName(systemId)}. Files: " +
+                        (dir.listFiles()?.filter { it.name != READY_MARKER }?.joinToString(", ") { it.name } ?: "none"),
+                )
         marker.writeText(primary.name)
         lastPrepared = romId to primary
         Timber.i("RomM game $romId ready: ${describe(primary)}")
@@ -156,13 +166,27 @@ class RommGameFiles(context: Context) {
         }
     }
 
-    private fun choosePrimary(dir: File): File? {
-        val files = dir.listFiles()?.filter { it.isFile && !it.name.endsWith(".part") && it.name != READY_MARKER } ?: return null
+    /** The file to start: a disc list or cue sheet first, else the largest file of a type this system plays. */
+    private fun choosePrimary(
+        dir: File,
+        systemId: String,
+    ): File? {
+        val playable = runCatching { GameSystem.findById(systemId).supportedExtensions }.getOrDefault(emptyList()).map { it.lowercase() }
+        val files =
+            dir.listFiles()?.filter {
+                it.isFile && !it.name.endsWith(".part") && it.name != READY_MARKER &&
+                    it.extension.lowercase() !in EXTRAS
+            } ?: return null
         for (ext in PRIMARY_ORDER) {
+            if (playable.isNotEmpty() && ext !in playable) continue
             files.firstOrNull { it.extension.equals(ext, true) }?.let { return it }
         }
-        return files.maxByOrNull { it.length() }
+        val candidates = if (playable.isEmpty()) files else files.filter { it.extension.lowercase() in playable }
+        return candidates.maxByOrNull { it.length() }
     }
+
+    private fun systemName(systemId: String): String =
+        runCatching { appContext.getString(GameSystem.findById(systemId).titleResId) }.getOrDefault(systemId)
 
     /** Frees space by removing the games played longest ago, keeping at least [needed] bytes plus a margin free. */
     private fun makeRoom(needed: Long) {
@@ -200,6 +224,14 @@ class RommGameFiles(context: Context) {
 
         private const val READY_MARKER = ".ready"
         private val PRIMARY_ORDER = listOf("m3u", "cue", "chd", "pbp", "gdi", "ccd", "iso", "cso")
+
+        /** Files stored alongside a game that are never the game itself. */
+        private val EXTRAS =
+            setOf(
+                "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg",
+                "txt", "nfo", "diz", "md", "pdf", "html", "htm", "xml", "json", "sfv", "md5", "sha1",
+                "mp3", "ogg", "flac", "wav", "mp4", "mkv",
+            )
 
         const val SCHEME = "romm"
 
