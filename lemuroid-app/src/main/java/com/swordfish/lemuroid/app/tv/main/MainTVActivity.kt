@@ -29,7 +29,6 @@ import com.swordfish.lemuroid.app.shared.main.GameLaunchTaskHandler
 import com.swordfish.lemuroid.app.tv.channel.ChannelUpdateWork
 import com.swordfish.lemuroid.app.tv.favorites.TVFavoritesFragment
 import com.swordfish.lemuroid.app.tv.games.TVGamesFragment
-import com.swordfish.lemuroid.app.tv.home.TVHomeFragment
 import com.swordfish.lemuroid.app.tv.search.TVSearchFragment
 import com.swordfish.lemuroid.app.tv.shared.BaseTVActivity
 import com.swordfish.lemuroid.app.tv.shared.TVHelper
@@ -155,10 +154,6 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
 
     @dagger.Module
     abstract class Module {
-        @PerFragment
-        @ContributesAndroidInjector(modules = [TVHomeFragment.Module::class])
-        abstract fun tvHomeFragment(): TVHomeFragment
-
         @PerFragment
         @ContributesAndroidInjector(modules = [com.swordfish.lemuroid.app.tv.home.BigPictureFragment.Module::class])
         abstract fun bigPictureFragment(): com.swordfish.lemuroid.app.tv.home.BigPictureFragment
