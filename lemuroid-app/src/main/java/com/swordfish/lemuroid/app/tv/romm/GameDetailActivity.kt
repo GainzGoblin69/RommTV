@@ -35,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -242,6 +243,10 @@ class GameDetailActivity : ComponentActivity() {
         val current = game
         val info = detail
         val playFocus = remember { FocusRequester() }
+        val scroll = rememberScrollState()
+        val scope = rememberCoroutineScope()
+        // Moving back up to the buttons brings the whole top of the page back, not just the button row
+        val toTop: () -> Unit = { scope.launch { scroll.animateScrollTo(0) } }
         LaunchedEffect(current != null) {
             if (current != null) runCatching { playFocus.requestFocus() }
         }
@@ -252,7 +257,7 @@ class GameDetailActivity : ComponentActivity() {
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(scroll)
                         .padding(horizontal = 48.dp, vertical = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
@@ -296,10 +301,10 @@ class GameDetailActivity : ComponentActivity() {
                         }
                         Spacer(Modifier.height(4.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TvButton("Play", primary = true, modifier = Modifier.focusRequester(playFocus)) { play(true) }
-                            TvButton("Pick a save" + (info?.saves?.size?.takeIf { it > 0 }?.let { " ($it)" } ?: "")) { showSaves = true }
-                            TvButton(if (favorite) "★ Favorite" else "☆ Favorite") { toggleFavorite() }
-                            if (onTv) TvButton("Remove from this TV") { removeFromTv() }
+                            TvButton("Play", primary = true, modifier = Modifier.focusRequester(playFocus), onFocused = toTop) { play(true) }
+                            TvButton("Pick a save" + (info?.saves?.size?.takeIf { it > 0 }?.let { " ($it)" } ?: ""), onFocused = toTop) { showSaves = true }
+                            TvButton(if (favorite) "★ Favorite" else "☆ Favorite", onFocused = toTop) { toggleFavorite() }
+                            if (onTv) TvButton("Remove from this TV", onFocused = toTop) { removeFromTv() }
                         }
                         if (status.isNotBlank()) Text(status, color = Lime, fontSize = 13.sp, lineHeight = 18.sp)
                     }
@@ -555,13 +560,17 @@ class GameDetailActivity : ComponentActivity() {
         text: String,
         primary: Boolean = false,
         modifier: Modifier = Modifier,
+        onFocused: () -> Unit = {},
         onClick: () -> Unit,
     ) {
         var focused by remember { mutableStateOf(false) }
         val shape = RoundedCornerShape(8.dp)
         Box(
             modifier
-                .onFocusChanged { focused = it.isFocused }
+                .onFocusChanged {
+                    if (it.isFocused && !focused) onFocused()
+                    focused = it.isFocused
+                }
                 .border(2.dp, if (focused) Lime else Color.Transparent, RoundedCornerShape(11.dp))
                 .padding(4.dp)
                 .clip(shape)
