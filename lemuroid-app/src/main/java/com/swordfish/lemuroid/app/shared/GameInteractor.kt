@@ -25,6 +25,11 @@ class GameInteractor(
     private val customCoverManager: CustomCoverManager,
 ) {
     fun onGamePlay(game: Game) {
+        // On the TV, choosing a RomM game opens its page first (details, achievements, saves)
+        if (useLeanback && game.fileUri.startsWith("romm://")) {
+            com.swordfish.lemuroid.app.tv.romm.GameDetailActivity.launch(activity.activity(), game)
+            return
+        }
         if (!ensureNotBusy()) {
             return
         }

@@ -3,6 +3,8 @@ package com.swordfish.lemuroid.lib.romm
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -50,6 +52,50 @@ data class RommFirmware(
     val size: Long,
     val crc: String?,
     val md5: String?,
+)
+
+data class RommSave(
+    val id: Int,
+    val fileName: String,
+    val size: Long,
+    val emulator: String?,
+    val slot: String?,
+    val updatedAt: String,
+)
+
+data class RommAchievement(
+    val badgeId: String?,
+    val title: String,
+    val description: String,
+    val points: Int,
+    val badgeUrl: String?,
+    val badgeUrlLock: String?,
+    val badgePath: String?,
+    val badgePathLock: String?,
+    val order: Int,
+)
+
+data class RommRomDetail(
+    val id: Int,
+    val raId: Int?,
+    val title: String,
+    val platformName: String,
+    val summary: String?,
+    val genres: List<String>,
+    val companies: List<String>,
+    val releaseDate: Long?,
+    val rating: Double?,
+    val playerCount: String?,
+    val regions: List<String>,
+    val hltbMain: Int?,
+    val hltbExtra: Int?,
+    val hltbComplete: Int?,
+    val screenshots: List<String>,
+    val achievements: List<RommAchievement>,
+    val saves: List<RommSave>,
+    val statesCount: Int,
+    val lastPlayed: String?,
+    val sizeBytes: Long,
 )
 
 data class RommDeviceCode(
@@ -312,8 +358,128 @@ class RommClient(private val session: RommSession) {
         if (!temp.renameTo(dest)) throw RommException("Couldn't save ${dest.name}")
     }
 
+    // ---- one game's page: details, achievements, saves
+
+    fun romDetail(romId: Int): RommRomDetail {
+        val r = JSONObject(getJson(url("api/roms").addPathSegment(romId.toString()).build()))
+        val meta = r.optJSONObject("metadatum")
+        val hltb = r.optJSONObject("hltb_metadata")
+        val ra = r.optJSONObject("merged_ra_metadata")?.optJSONArray("achievements") ?: JSONArray()
+        val saves = r.optJSONArray("user_saves") ?: JSONArray()
+        val shots = r.optJSONArray("merged_screenshots") ?: JSONArray()
+
+        fun strings(
+            o: JSONObject?,
+            key: String,
+        ): List<String> {
+            val a = o?.optJSONArray(key) ?: return emptyList()
+            return (0 until a.length()).mapNotNull { a.optString(it).ifBlank { null } }
+        }
+
+        fun seconds(key: String): Int? = hltb?.optInt(key, 0)?.takeIf { it > 0 }
+
+        return RommRomDetail(
+            id = r.getInt("id"),
+            raId = if (r.isNull("ra_id")) null else r.optInt("ra_id"),
+            title = r.optStringOrNull("name") ?: r.optString("fs_name_no_ext"),
+            platformName = r.optString("platform_display_name"),
+            summary = r.optStringOrNull("summary"),
+            genres = strings(meta, "genres"),
+            companies = strings(meta, "companies"),
+            releaseDate = meta?.let { if (it.isNull("first_release_date")) null else it.optLong("first_release_date") },
+            rating = meta?.let { if (it.isNull("average_rating")) null else it.optDouble("average_rating") },
+            playerCount = meta?.optStringOrNull("player_count"),
+            regions = strings(r, "regions"),
+            hltbMain = seconds("main_story"),
+            hltbExtra = seconds("main_plus_extra"),
+            hltbComplete = seconds("completionist"),
+            screenshots = (0 until shots.length()).mapNotNull { shots.optString(it).ifBlank { null } },
+            achievements =
+                (0 until ra.length()).map { i ->
+                    val a = ra.getJSONObject(i)
+                    RommAchievement(
+                        badgeId = a.optStringOrNull("badge_id"),
+                        title = a.optStringOrNull("title") ?: "",
+                        description = a.optStringOrNull("description") ?: "",
+                        points = a.optInt("points"),
+                        badgeUrl = a.optStringOrNull("badge_url"),
+                        badgeUrlLock = a.optStringOrNull("badge_url_lock"),
+                        badgePath = a.optStringOrNull("badge_path"),
+                        badgePathLock = a.optStringOrNull("badge_path_lock"),
+                        order = a.optInt("display_order"),
+                    )
+                }.sortedBy { it.order },
+            saves =
+                (0 until saves.length()).map { i ->
+                    val v = saves.getJSONObject(i)
+                    RommSave(
+                        id = v.getInt("id"),
+                        fileName = v.optString("file_name"),
+                        size = v.optLong("file_size_bytes"),
+                        emulator = v.optStringOrNull("emulator"),
+                        slot = v.optStringOrNull("slot"),
+                        updatedAt = v.optString("updated_at"),
+                    )
+                }.sortedByDescending { it.updatedAt },
+            statesCount = r.optJSONArray("user_states")?.length() ?: 0,
+            lastPlayed = r.optJSONObject("rom_user")?.optStringOrNull("last_played"),
+            sizeBytes = r.optLong("fs_size_bytes"),
+        )
+    }
+
+    /** The badge ids of the RetroAchievements this RomM user has earned for a game. */
+    fun earnedAchievements(raId: Int): Set<String> {
+        val me = JSONObject(getJson(url("api/users/me").build()))
+        val results = me.optJSONObject("ra_progression")?.optJSONArray("results") ?: return emptySet()
+        for (i in 0 until results.length()) {
+            val g = results.getJSONObject(i)
+            if (g.optInt("rom_ra_id", -1) != raId) continue
+            val earned = g.optJSONArray("earned_achievements") ?: return emptySet()
+            return (0 until earned.length()).mapNotNull { earned.getJSONObject(it).optString("id").ifBlank { null } }.toSet()
+        }
+        return emptySet()
+    }
+
+    fun downloadSave(
+        saveId: Int,
+        dest: File,
+    ) = download(url("api/saves").addPathSegment(saveId.toString()).addPathSegment("content").build(), dest)
+
+    /** Uploads a save into its own slot in RomM, so it sits beside the web player's saves instead of replacing them. */
+    fun uploadSave(
+        romId: Int,
+        file: File,
+        fileName: String,
+    ) {
+        val target =
+            url("api/saves")
+                .addQueryParameter("rom_id", romId.toString())
+                .addQueryParameter("emulator", SAVE_EMULATOR)
+                .addQueryParameter("slot", SAVE_SLOT)
+                .addQueryParameter("autocleanup", "true")
+                .addQueryParameter("autocleanup_limit", "5")
+                .build()
+        val body =
+            MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("saveFile", fileName, file.asRequestBody("application/octet-stream".toMediaType()))
+                .build()
+        execute(authed(Request.Builder().url(target)).post(body).build()).close()
+    }
+
+    /** Addresses to try for an image stored on the RomM server: the .webp copy the web page uses, then the path as given. */
+    fun imageCandidates(path: String?): List<String> {
+        if (path.isNullOrBlank()) return emptyList()
+        if (path.startsWith("http")) return listOf(path)
+        val clean = session.serverUrl + "/" + path.substringBefore('?').trimStart('/')
+        val webp = clean.replace(Regex("\\.(png|jpg|jpeg)$", RegexOption.IGNORE_CASE), ".webp")
+        return listOf(webp, clean).distinct()
+    }
+
     companion object {
         private val JSON = "application/json".toMediaType()
+
+        const val SAVE_SLOT = "RomM TV"
+        const val SAVE_EMULATOR = "romm-tv"
 
         val REQUESTED_SCOPES =
             listOf(

@@ -117,6 +117,17 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
             BaseGameActivity.REQUEST_PLAY_GAME -> {
                 GlobalScope.safeLaunch {
                     gameLaunchTaskHandler.handleGameFinish(false, this@MainTVActivity, resultCode, data)
+                    // Send the TV's save to RomM after playing
+                    val played =
+                        data?.extras?.getSerializable(BaseGameActivity.PLAY_GAME_RESULT_GAME)
+                            as? com.swordfish.lemuroid.lib.library.db.entity.Game
+                    if (resultCode == android.app.Activity.RESULT_OK && played != null) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            runCatching {
+                                com.swordfish.lemuroid.app.tv.romm.RommSaves.uploadAfterPlay(applicationContext, played)
+                            }
+                        }
+                    }
                     ChannelUpdateWork.enqueue(applicationContext)
                 }
             }

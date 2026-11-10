@@ -105,6 +105,10 @@ abstract class LemuroidApplicationModule {
 
     @PerActivity
     @ContributesAndroidInjector
+    abstract fun gameDetailActivity(): com.swordfish.lemuroid.app.tv.romm.GameDetailActivity
+
+    @PerActivity
+    @ContributesAndroidInjector
     abstract fun gameActivity(): GameActivity
 
     @ContributesAndroidInjector

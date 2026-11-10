@@ -121,6 +121,11 @@
             android:exported="false"
             android:theme="@style/LemuroidLeanbackTheme" />
 
+        <activity
+            android:name=".app.tv.romm.GameDetailActivity"
+            android:exported="false"
+            android:theme="@style/LemuroidLeanbackTheme" />
+
         <receiver
             android:name=".app.tv.romm.AppUpdater$InstallResultReceiver"
             android:exported="false" />
