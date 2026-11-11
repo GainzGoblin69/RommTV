@@ -40,14 +40,21 @@
         android:roundIcon="@mipmap/lemuroid_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/LemuroidMaterialTheme">
+        <!-- RomM TV is TV-only: the regular launcher entry (used by some older Android TV launchers,
+             Downloader's "Open" button and the app list) goes straight to the TV home, never the phone UI. -->
         <activity
-            android:name="com.swordfish.lemuroid.app.mobile.feature.main.MainActivity"
-            android:exported="true">
+            android:name=".app.tv.main.TVLauncherActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name="com.swordfish.lemuroid.app.mobile.feature.main.MainActivity"
+            android:exported="false" />
 
         <activity
             android:name="com.swordfish.lemuroid.app.shared.game.ExternalGameLauncherActivity"
@@ -101,6 +108,7 @@
         <activity
             android:name=".app.tv.main.MainTVActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/LemuroidLeanbackTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
