@@ -287,22 +287,36 @@ class RommClient(private val session: RommSession) {
     }
 
     /** One page of games, with their files. Returns the games and the total on the server. */
+    /** One page of the library. [received] is how many entries the server sent, including ones the app skips. */
+    class RomPage(val roms: List<RommRom>, val received: Int, val total: Int)
+
     fun roms(
         offset: Int,
         limit: Int,
-    ): Pair<List<RommRom>, Int> {
+    ): RomPage {
         val url =
             url("api/roms")
                 .addQueryParameter("limit", limit.toString())
                 .addQueryParameter("offset", offset.toString())
                 .addQueryParameter("with_files", "true")
-                .addQueryParameter("order_by", "name")
+                // Ordered by id: every game has its own, so pages never overlap or skip a game.
+                // (Ordering by name let games with the same name swap places between pages.)
+                .addQueryParameter("order_by", "id")
                 .addQueryParameter("order_dir", "asc")
+                // Extras the website uses for its gallery; leaving them out makes each page much faster
+                .addQueryParameter("with_char_index", "false")
+                .addQueryParameter("with_filter_values", "false")
+                .addQueryParameter("with_rom_id_index", "false")
                 .build()
         val json = JSONObject(getJson(url))
         val items = json.getJSONArray("items")
-        val roms = (0 until items.length()).mapNotNull { parseRom(items.getJSONObject(it)) }
-        return roms to json.optInt("total", roms.size)
+        val roms =
+            (0 until items.length()).mapNotNull { i ->
+                runCatching { parseRom(items.getJSONObject(i)) }
+                    .onFailure { timber.log.Timber.e(it, "Skipping a game RomM listed in an unexpected shape") }
+                    .getOrNull()
+            }
+        return RomPage(roms, items.length(), json.optInt("total", offset + items.length()))
     }
 
     private fun parseRom(r: JSONObject): RommRom? {

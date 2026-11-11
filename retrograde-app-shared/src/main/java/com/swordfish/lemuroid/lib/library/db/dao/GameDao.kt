@@ -88,7 +88,7 @@ interface GameDao {
     @Query("SELECT count(*) count, systemId systemId FROM games GROUP BY systemId")
     fun selectSystemsWithCount(): Flow<List<SystemCount>>
 
-    @Insert
+    @Insert(onConflict = androidx.room.OnConflictStrategy.IGNORE)
     fun insert(games: List<Game>): List<Long>
 
     @Delete

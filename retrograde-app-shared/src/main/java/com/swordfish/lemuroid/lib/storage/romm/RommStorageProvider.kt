@@ -6,6 +6,7 @@ import androidx.leanback.preference.LeanbackPreferenceFragment
 import com.swordfish.lemuroid.lib.library.db.entity.DataFile
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.romm.RommClient
+import com.swordfish.lemuroid.lib.romm.RommLibraryStatus
 import com.swordfish.lemuroid.lib.romm.RommGameFiles
 import com.swordfish.lemuroid.lib.romm.RommPlatforms
 import com.swordfish.lemuroid.lib.romm.RommRom
@@ -46,10 +47,16 @@ class RommStorageProvider(private val context: Context) : StorageProvider {
         flow {
             if (!session.isSignedIn) return@flow
             known.clear()
+            RommLibraryStatus.started(context)
+            val seen = HashSet<Int>()
+            var listed = 0
             var offset = 0
             while (true) {
-                // A failure here stops the sync and keeps the library as it was (see LemuroidLibrary)
-                val (page, total) = client.roms(offset, PAGE_SIZE)
+                // A page that fails is tried again; if it keeps failing the sync stops and keeps the
+                // library as it was (see LemuroidLibrary)
+                val result = fetchPage(offset)
+                val total = result.total
+                val page = result.roms.filter { seen.add(it.id) }
                 val playable =
                     page.filter { RommPlatforms.systemFor(it.platformSlug, it.platformFsSlug) != null }
                 val files =
@@ -65,10 +72,32 @@ class RommStorageProvider(private val context: Context) : StorageProvider {
                     }
                 Timber.i("RomM: ${files.size} playable of ${page.size} (offset $offset of $total)")
                 emit(files)
-                offset += page.size
-                if (page.isEmpty() || offset >= total) break
+                listed += files.size
+                offset += result.received
+                RommLibraryStatus.progress(context, listed, total)
+                if (result.received == 0 || offset >= total) {
+                    RommLibraryStatus.finished(context, listed, total)
+                    break
+                }
             }
         }
+
+    private suspend fun fetchPage(offset: Int): RommClient.RomPage {
+        var last: Throwable? = null
+        repeat(PAGE_TRIES) { attempt ->
+            try {
+                return client.roms(offset, PAGE_SIZE)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                last = e
+                Timber.e(e, "RomM: page at $offset failed (try ${attempt + 1})")
+                kotlinx.coroutines.delay(2000L * (attempt + 1))
+            }
+        }
+        RommLibraryStatus.failed(context, last?.message ?: "RomM didn't answer")
+        throw last ?: IllegalStateException("RomM didn't answer")
+    }
 
     override fun groupFiles(files: List<BaseStorageFile>): List<GroupedStorageFiles> = files.map { GroupedStorageFiles(it, emptyList()) }
 
@@ -118,6 +147,7 @@ class RommStorageProvider(private val context: Context) : StorageProvider {
     }
 
     companion object {
-        private const val PAGE_SIZE = 500
+        private const val PAGE_SIZE = 200
+        private const val PAGE_TRIES = 3
     }
 }

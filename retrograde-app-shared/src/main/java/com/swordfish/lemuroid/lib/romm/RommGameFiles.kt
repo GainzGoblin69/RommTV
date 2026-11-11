@@ -102,13 +102,14 @@ class RommGameFiles(context: Context) {
         dir.mkdirs()
 
         val rom = JSONObject(fetchRom(romId))
+        val playable = playableExtensions(systemId)
         val filesJson = rom.optJSONArray("files")
         // Only the game itself: skip covers, screenshots, manuals and other extras stored with it
         val files =
             (0 until (filesJson?.length() ?: 0)).map { filesJson!!.getJSONObject(it) }
                 .filter { f ->
                     val category = if (f.isNull("category")) "game" else f.optString("category", "game")
-                    category == "game" && File(f.getString("file_name")).extension.lowercase() !in EXTRAS
+                    category == "game" && !isExtra(File(f.getString("file_name")).extension, playable)
                 }
                 .map { f -> Triple(f.getInt("id"), f.getString("file_name"), f.optLong("file_size_bytes")) }
                 .ifEmpty { throw RommException("This game has no game files on the server, only extras like artwork") }
@@ -224,11 +225,11 @@ class RommGameFiles(context: Context) {
         dir: File,
         systemId: String,
     ): File? {
-        val playable = runCatching { GameSystem.findById(systemId).supportedExtensions }.getOrDefault(emptyList()).map { it.lowercase() }
+        val playable = playableExtensions(systemId)
         val files =
             dir.listFiles()?.filter {
                 it.isFile && !it.name.endsWith(".part") && it.name != READY_MARKER &&
-                    it.extension.lowercase() !in EXTRAS
+                    !isExtra(it.extension, playable)
             } ?: return null
         for (ext in PRIMARY_ORDER) {
             if (playable.isNotEmpty() && ext !in playable) continue
@@ -236,6 +237,21 @@ class RommGameFiles(context: Context) {
         }
         val candidates = if (playable.isEmpty()) files else files.filter { it.extension.lowercase() in playable }
         return candidates.maxByOrNull { it.length() }
+    }
+
+    private fun playableExtensions(systemId: String): List<String> =
+        runCatching { GameSystem.findById(systemId).supportedExtensions }.getOrDefault(emptyList()).map { it.lowercase() }
+
+    /**
+     * Artwork, manuals and the like. An extension the console itself plays is never an extra:
+     * ".md" is a text file almost everywhere, but a Mega Drive / Genesis game here.
+     */
+    private fun isExtra(
+        extension: String,
+        playable: List<String>,
+    ): Boolean {
+        val ext = extension.lowercase()
+        return ext in EXTRAS && ext !in playable
     }
 
     private fun systemName(systemId: String): String =

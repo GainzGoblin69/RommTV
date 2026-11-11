@@ -21,7 +21,7 @@ object RommDiagnostics {
         if (!session.isSignedIn) return lines.joinToString("\n")
 
         val roms =
-            runCatching { client.roms(0, 50).first }
+            runCatching { client.roms(0, 50).roms }
                 .getOrElse {
                     lines += "Couldn't list games: ${it.message}"
                     return lines.joinToString("\n")

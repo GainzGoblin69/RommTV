@@ -125,6 +125,36 @@ class BigPictureFragment : Fragment() {
 
     private var touchVibration by mutableStateOf("press")
 
+    private var syncStatus by mutableStateOf<com.swordfish.lemuroid.lib.romm.RommLibraryStatus.Status?>(null)
+
+    /** Picks up games added to RomM since the last look: syncs when the app comes back and the last sync is over 15 minutes old. */
+    private fun syncIfStale() {
+        val context = context?.applicationContext ?: return
+        val status = com.swordfish.lemuroid.lib.romm.RommLibraryStatus.read(context)
+        syncStatus = status
+        if (!com.swordfish.lemuroid.lib.romm.RommSession(context).isSignedIn) return
+        if (System.currentTimeMillis() - status.attemptAt > 15 * 60 * 1000L) {
+            LibraryIndexScheduler.scheduleLibrarySync(context)
+        }
+    }
+
+    private fun syncProblem(): String? {
+        val status = syncStatus ?: return null
+        if (status.error == null || home.indexInProgress) return null
+        return "The last library sync didn't finish (${status.error}). Got ${status.listed} of ${status.total} games. " +
+            "Settings → Sync library tries again."
+    }
+
+    private fun syncSummary(): String {
+        val status = context?.let { com.swordfish.lemuroid.lib.romm.RommLibraryStatus.read(it) } ?: return "Fetch new games and covers from RomM"
+        val time: (Long) -> String = { android.text.format.DateUtils.getRelativeTimeSpanString(it).toString() }
+        return when {
+            status.error != null -> "Last sync stopped: ${status.error}. Got ${status.listed} of ${status.total}."
+            status.successAt > 0 -> "${status.listed} games from RomM (${status.total} entries on the server) · synced ${time(status.successAt)}"
+            else -> "Fetch new games and covers from RomM"
+        }
+    }
+
     private fun emulatorPrefs() =
         com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper.getSharedPreferences(requireContext().applicationContext)
 
@@ -195,6 +225,7 @@ class BigPictureFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        syncIfStale()
         refreshInstalledIds()
         if (tab == Tab.INSTALLED) refreshInstalled()
         librarySystem?.let { loadLibrary(it) }
@@ -382,6 +413,7 @@ class BigPictureFragment : Fragment() {
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 48.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            syncProblem()?.let { Text(it, color = Color(0xFFFFB74D), fontSize = 14.sp) }
             if (home.metaSystems.isEmpty()) Text("No platforms yet.", color = Quiet, fontSize = 16.sp)
             home.metaSystems.chunked(5).forEach { rowItems ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -888,7 +920,7 @@ class BigPictureFragment : Fragment() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SettingTile("Sync library", if (home.indexInProgress) "Syncing now…" else "Fetch new games and covers from RomM") {
+                SettingTile("Sync library", if (home.indexInProgress) "Syncing now…" else syncSummary()) {
                     LibraryIndexScheduler.scheduleLibrarySync(requireContext().applicationContext)
                     Toast.makeText(requireContext(), "Syncing your library with RomM…", Toast.LENGTH_SHORT).show()
                 }
