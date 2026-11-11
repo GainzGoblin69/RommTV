@@ -14,7 +14,7 @@ import java.util.zip.ZipInputStream
 
 /** Where downloaded games can live: the TV's own storage, or a USB drive plugged into it. */
 data class GameStorage(val root: File, val isUsb: Boolean) {
-    val label: String get() = if (isUsb) "USB drive" else "This TV"
+    val label: String get() = if (isUsb) "USB drive" else "This ${com.swordfish.lemuroid.lib.romm.Device.word}"
 }
 
 /** A game downloaded to the TV or the USB drive. */
@@ -258,7 +258,7 @@ class RommGameFiles(context: Context) {
             Timber.i("Removing ${game.name} to make room")
             game.deleteRecursively()
         }
-        if (free() < needed) throw RommException("Not enough space on the ${if (storage.isUsb) "USB drive" else "TV"} for this game")
+        if (free() < needed) throw RommException("Not enough space on the ${if (storage.isUsb) "USB drive" else Device.word} for this game")
     }
 
     /** Deletes the game from the TV and the USB drive. */

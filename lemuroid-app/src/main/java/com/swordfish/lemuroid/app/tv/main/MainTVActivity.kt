@@ -58,6 +58,7 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.swordfish.lemuroid.app.tv.romm.PhoneUi.apply(this)
         setContentView(R.layout.activity_tv_main)
 
         val factory = MainTVViewModel.Factory(applicationContext)

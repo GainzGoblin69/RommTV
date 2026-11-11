@@ -107,6 +107,7 @@
         <!-- Leanback activities -->
         <activity
             android:name=".app.tv.main.MainTVActivity"
+            android:screenOrientation="sensorLandscape"
             android:exported="true"
             android:launchMode="singleTask"
             android:theme="@style/LemuroidLeanbackTheme">
@@ -126,11 +127,13 @@
 
         <activity
             android:name=".app.tv.romm.RommSignInActivity"
+            android:screenOrientation="sensorLandscape"
             android:exported="false"
             android:theme="@style/LemuroidLeanbackTheme" />
 
         <activity
             android:name=".app.tv.romm.NetplayActivity"
+            android:screenOrientation="sensorLandscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize"
             android:exported="false"
             android:hardwareAccelerated="true"
@@ -138,11 +141,13 @@
 
         <activity
             android:name=".app.tv.romm.ConsoleControlsActivity"
+            android:screenOrientation="sensorLandscape"
             android:exported="false"
             android:theme="@style/LemuroidLeanbackTheme" />
 
         <activity
             android:name=".app.tv.romm.GameDetailActivity"
+            android:screenOrientation="sensorLandscape"
             android:exported="false"
             android:theme="@style/LemuroidLeanbackTheme" />
 

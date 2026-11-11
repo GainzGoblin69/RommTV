@@ -25,6 +25,7 @@ class LemuroidApplication : DaggerApplication(), HasWorkerInjector, ImageLoaderF
     @SuppressLint("CheckResult")
     override fun onCreate() {
         super.onCreate()
+        com.swordfish.lemuroid.lib.romm.Device.init(this)
 
         val initializeComponent =
             if (isMainProcess()) {

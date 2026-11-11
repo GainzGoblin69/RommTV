@@ -61,6 +61,7 @@ class ConsoleControlsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.swordfish.lemuroid.app.tv.romm.PhoneUi.apply(this)
         val ids = intent.getStringArrayListExtra(EXTRA_SYSTEMS).orEmpty()
         systems =
             ids.mapNotNull { id -> SystemID.values().firstOrNull { it.dbname == id } }
@@ -255,7 +256,7 @@ class ConsoleControlsActivity : ComponentActivity() {
                     lineHeight = 19.sp,
                 )
                 Spacer(Modifier.height(14.dp))
-                Text("Back on the remote cancels · closes in $secondsLeft s", color = Quiet, fontSize = 12.sp)
+                Text("Back cancels · closes in $secondsLeft s", color = Quiet, fontSize = 12.sp)
             }
         }
     }

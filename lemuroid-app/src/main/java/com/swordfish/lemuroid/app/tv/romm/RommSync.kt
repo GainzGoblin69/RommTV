@@ -207,7 +207,7 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
         if (states > 0) notes += "$states save state${if (states == 1) "" else "s"} synced to RomM."
 
         val done = saveOk && states >= 0 && reported
-        if (!done) notes += "Couldn't reach RomM to sync everything. It's saved on this TV and will upload automatically when RomM is reachable."
+        if (!done) notes += "Couldn't reach RomM to sync everything. It's saved on this ${com.swordfish.lemuroid.lib.romm.Device.word} and will upload automatically when RomM is reachable."
         return Uploaded(notes, done, reported)
     }
 
@@ -305,7 +305,7 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
             val bytes = state?.state?.takeIf { it.isNotEmpty() } ?: continue
             val hash = md5(bytes)
             if (prefs.getString(stateKey(info.id, index, "hash"), null) == hash) continue
-            val name = "${game.title.take(60)} - TV ${if (index == 0) "autosave" else "slot $index"}.state"
+            val name = "${game.title.take(60)} - ${com.swordfish.lemuroid.lib.romm.Device.word} ${if (index == 0) "autosave" else "slot $index"}.state"
             val known = prefs.getInt(stateKey(info.id, index, "id"), -1)
             val id =
                 if (known > 0 && client.updateState(known, name, bytes, null)) {

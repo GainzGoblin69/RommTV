@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -85,6 +87,7 @@ class RommSignInActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.swordfish.lemuroid.app.tv.romm.PhoneUi.apply(this)
         session = RommSession(this)
         client = RommClient(session)
         server = session.serverUrl.removePrefix("https://")
@@ -117,12 +120,12 @@ class RommSignInActivity : ComponentActivity() {
                 val device =
                     result.getOrElse {
                         Timber.e(it, "Device login init failed")
-                        status = "Couldn't reach $address. Check the address and that the TV is online, then choose Get a new code."
+                        status = "Couldn't reach $address. Check the address and that the ${com.swordfish.lemuroid.lib.romm.Device.word} is online, then choose Get a new code."
                         return@launch
                     }
                 code = device
                 qr = makeQr(device.verificationUrlComplete)
-                status = "Waiting for you to approve this TV in RomM…"
+                status = "Waiting for you to approve this ${com.swordfish.lemuroid.lib.romm.Device.word} in RomM…"
                 poll(address, device)
             }
     }
@@ -172,8 +175,16 @@ class RommSignInActivity : ComponentActivity() {
         return bitmap
     }
 
+    /** On a phone the approval page opens right here in the browser; the app keeps waiting and signs in when you come back. */
+    private fun openApprovalPage() {
+        val url = code?.verificationUrlComplete ?: return
+        runCatching { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
+            .onFailure { status = "Couldn't open a browser. Open ${code?.verificationUrl} yourself and enter the code." }
+    }
+
     @Composable
     private fun Screen() {
+        val phone = !com.swordfish.lemuroid.lib.romm.Device.isTv(this)
         val buttonFocus = remember { FocusRequester() }
         LaunchedEffect(Unit) { runCatching { buttonFocus.requestFocus() } }
 
@@ -182,11 +193,14 @@ class RommSignInActivity : ComponentActivity() {
                 Modifier
                     .fillMaxSize()
                     .background(Ground)
-                    .padding(horizontal = 60.dp, vertical = 48.dp),
+                    .padding(horizontal = if (phone) 32.dp else 60.dp, vertical = if (phone) 12.dp else 48.dp),
             horizontalArrangement = Arrangement.spacedBy(60.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            Column(
+                modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(if (phone) 12.dp else 20.dp),
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         Modifier
@@ -200,13 +214,17 @@ class RommSignInActivity : ComponentActivity() {
                 Text(
                     "Connect to your RomM server",
                     color = TextColor,
-                    fontSize = 36.sp,
+                    fontSize = if (phone) 26.sp else 36.sp,
                     fontWeight = FontWeight.Bold,
-                    lineHeight = 40.sp,
+                    lineHeight = if (phone) 30.sp else 40.sp,
                 )
-                Step(1, "On your phone, scan the QR code, or open the address shown and sign in to RomM.")
-                Step(2, "Check that the code matches the one on this TV, then choose Approve.")
-                Step(3, "This TV signs itself in. You only do this once.")
+                if (phone) {
+                    Step(1, "Tap Open approval page and sign in to RomM. (Or scan the QR code with another device.)")
+                } else {
+                    Step(1, "On your phone, scan the QR code, or open the address shown and sign in to RomM.")
+                }
+                Step(2, "Check that the code matches the one on this ${com.swordfish.lemuroid.lib.romm.Device.word}, then choose Approve.")
+                Step(3, "This ${com.swordfish.lemuroid.lib.romm.Device.word} signs itself in. You only do this once.")
 
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
@@ -233,13 +251,15 @@ class RommSignInActivity : ComponentActivity() {
                     onClick = { if (!busy) requestCode() },
                     modifier = Modifier.focusRequester(buttonFocus),
                 )
+                if (phone && code != null) FocusButton(text = "Open approval page", onClick = { openApprovalPage() })
                 Text(status, color = Quiet, fontSize = 14.sp, lineHeight = 20.sp)
             }
 
             Column(
                 modifier =
                     Modifier
-                        .width(360.dp)
+                        .width(if (phone) 300.dp else 360.dp)
+                        .verticalScroll(rememberScrollState())
                         .clip(RoundedCornerShape(12.dp))
                         .background(Panel)
                         .border(1.dp, Line, RoundedCornerShape(12.dp))

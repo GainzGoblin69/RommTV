@@ -60,6 +60,7 @@ class NetplayActivity : Activity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.swordfish.lemuroid.app.tv.romm.PhoneUi.apply(this)
         val romId = intent.getIntExtra(EXTRA_ROM_ID, -1)
         val server = RommSession(this).serverUrl
 
@@ -118,6 +119,13 @@ class NetplayActivity : Activity() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
                 .apply { bottomMargin = pad * 2 },
         )
+
+        // On a phone you tap the page directly, so the pointer starts hidden (the menu can bring it back)
+        if (!com.swordfish.lemuroid.lib.romm.Device.isTv(this)) {
+            pointer = false
+            cursor.visibility = View.GONE
+            hint.visibility = View.GONE
+        }
 
         setContentView(root)
         window.decorView.systemUiVisibility =

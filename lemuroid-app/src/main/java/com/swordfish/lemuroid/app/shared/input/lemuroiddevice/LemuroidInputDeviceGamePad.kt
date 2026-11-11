@@ -48,7 +48,10 @@ class LemuroidInputDeviceGamePad(private val device: InputDevice) : LemuroidInpu
     override fun isEnabledByDefault(appContext: Context): Boolean {
         // On a TV every real controller should just work in games, whatever buttons it reports
         if (!appContext.packageManager.hasSystemFeature("android.hardware.touchscreen")) return true
-        return device.supportsAllKeys(MINIMAL_KEYS_DEFAULT_ENABLED)
+        // On a phone: any controller you plug in or pair works right away (and hides the touch controls);
+        // built-in input devices only count when they really have a full set of buttons
+        val external = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q && device.isExternal
+        return external || device.supportsAllKeys(MINIMAL_KEYS_DEFAULT_ENABLED)
     }
 
     override fun getSupportedShortcuts(): List<GameShortcutType> = GameShortcutType.values().toList()

@@ -356,7 +356,7 @@ class GameViewModelRetroGameView(
                 message =
                     "The emulator couldn't open this game.\n\nFile: " +
                         com.swordfish.lemuroid.lib.romm.RommGameFiles.describe(file) +
-                        "\n\nIt has been removed from the TV, so the next try downloads it again."
+                        "\n\nIt has been removed from the ${com.swordfish.lemuroid.lib.romm.Device.word}, so the next try downloads it again."
                 com.swordfish.lemuroid.lib.romm.RommGameFiles(appContext).remove(romId)
             }
         }

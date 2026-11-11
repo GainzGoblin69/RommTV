@@ -123,6 +123,11 @@ class BigPictureFragment : Fragment() {
     private var usbConnected by mutableStateOf(false)
     private var installedSort by mutableStateOf(InstalledSort.SIZE)
 
+    private var touchVibration by mutableStateOf("press")
+
+    private fun emulatorPrefs() =
+        com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper.getSharedPreferences(requireContext().applicationContext)
+
     private var searchGames by mutableStateOf<List<Game>?>(null)
     private var searchQuery by mutableStateOf("")
     private var searchSystem by mutableStateOf<String?>(null)
@@ -150,6 +155,9 @@ class BigPictureFragment : Fragment() {
         updateBack()
         if (next == Tab.INSTALLED) refreshInstalled()
         if (next == Tab.SEARCH) loadSearchGames()
+        if (next == Tab.SETTINGS) {
+            touchVibration = emulatorPrefs().getString(getString(R.string.pref_key_haptic_feedback_mode), "press") ?: "press"
+        }
     }
 
     override fun onAttach(context: Context) {
@@ -679,7 +687,7 @@ class BigPictureFragment : Fragment() {
                     FocusBox(Modifier.width(250.dp).height(84.dp), onClick = { showDownloadLocation() }) {
                         Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.SpaceBetween) {
                             Text(
-                                (if (s.isUsb) "USB drive" else "This TV") + ": ${formatBytes(s.freeBytes)} free" +
+                                (if (s.isUsb) "USB drive" else "This ${com.swordfish.lemuroid.lib.romm.Device.word}") + ": ${formatBytes(s.freeBytes)} free" +
                                     (if (s.isDownloadTarget) "  ✓" else ""),
                                 color = TextColor,
                                 fontSize = 15.sp,
@@ -712,7 +720,7 @@ class BigPictureFragment : Fragment() {
                             GameTile(
                                 item.game,
                                 fill = true,
-                                subtitle = formatBytes(item.sizeBytes) + if (item.isUsb) " · USB" else " · TV",
+                                subtitle = formatBytes(item.sizeBytes) + if (item.isUsb) " · USB" else " · ${com.swordfish.lemuroid.lib.romm.Device.word}",
                                 onClick = { confirmRemove(item) },
                             )
                         }
@@ -783,7 +791,7 @@ class BigPictureFragment : Fragment() {
                 withContext(Dispatchers.IO) {
                     val usb = files.usbStorage
                     Triple(
-                        "This TV  (${formatBytes(files.space(files.storages().first()).first)} free)",
+                        "This ${com.swordfish.lemuroid.lib.romm.Device.word}  (${formatBytes(files.space(files.storages().first()).first)} free)",
                         if (usb != null) "USB drive  (${formatBytes(files.space(usb).first)} free)" else "USB drive  (not connected)",
                         usb != null,
                     )
@@ -812,7 +820,7 @@ class BigPictureFragment : Fragment() {
             AlertDialog.Builder(context)
                 .setTitle("Delete ${item.game.title}?")
                 .setMessage(
-                    "It's on the ${if (item.isUsb) "USB drive" else "TV"} and takes ${formatBytes(item.sizeBytes)}. " +
+                    "It's on the ${if (item.isUsb) "USB drive" else com.swordfish.lemuroid.lib.romm.Device.word} and takes ${formatBytes(item.sizeBytes)}. " +
                         "It stays in your RomM library and downloads again the next time you play it. Your saves are kept.",
                 )
                 .setPositiveButton("Delete") { _, _ ->
@@ -823,7 +831,7 @@ class BigPictureFragment : Fragment() {
                 }
                 .setNegativeButton("Cancel", null)
         if (item.isUsb || usbConnected) {
-            builder.setNeutralButton(if (item.isUsb) "Move to TV" else "Move to USB") { _, _ -> moveGames(listOf(item), toUsb = !item.isUsb) }
+            builder.setNeutralButton(if (item.isUsb) "Move to ${com.swordfish.lemuroid.lib.romm.Device.word}" else "Move to USB") { _, _ -> moveGames(listOf(item), toUsb = !item.isUsb) }
         }
         builder.show()
     }
@@ -847,7 +855,7 @@ class BigPictureFragment : Fragment() {
         val context = requireContext()
         val progress =
             AlertDialog.Builder(context)
-                .setTitle(if (toUsb) "Moving to the USB drive" else "Moving to the TV")
+                .setTitle(if (toUsb) "Moving to the USB drive" else "Moving to the ${com.swordfish.lemuroid.lib.romm.Device.word}")
                 .setMessage("Starting…")
                 .setCancelable(false)
                 .show()
@@ -885,7 +893,7 @@ class BigPictureFragment : Fragment() {
                     Toast.makeText(requireContext(), "Syncing your library with RomM…", Toast.LENGTH_SHORT).show()
                 }
                 SettingTile("RomM account", "Connection check and sign in") { showRommStatus() }
-                SettingTile("Download location", "This TV or a USB drive") { showDownloadLocation() }
+                SettingTile("Download location", "This ${com.swordfish.lemuroid.lib.romm.Device.word} or a USB drive") { showDownloadLocation() }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SettingTile("Check for updates", "Build ${com.swordfish.lemuroid.BuildConfig.VERSION_CODE} installed") {
@@ -900,6 +908,28 @@ class BigPictureFragment : Fragment() {
                 }
                 SettingTile("Emulator settings", "Controllers, display, cores and saves") {
                     startActivity(Intent(requireContext(), TVSettingsActivity::class.java))
+                }
+            }
+            if (!com.swordfish.lemuroid.lib.romm.Device.isTv(requireContext())) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SettingTile(
+                        "Touch controls vibration: " +
+                            when (touchVibration) {
+                                "none" -> "Off"
+                                "press_release" -> "Press and release"
+                                else -> "On press"
+                            },
+                        "Tap to change. The on-screen buttons hide while a controller is connected.",
+                    ) {
+                        touchVibration =
+                            when (touchVibration) {
+                                "press" -> "press_release"
+                                "press_release" -> "none"
+                                else -> "press"
+                            }
+                        emulatorPrefs().edit().putString(getString(R.string.pref_key_haptic_feedback_mode), touchVibration).apply()
+                    }
+                    Spacer(Modifier.weight(2f))
                 }
             }
         }

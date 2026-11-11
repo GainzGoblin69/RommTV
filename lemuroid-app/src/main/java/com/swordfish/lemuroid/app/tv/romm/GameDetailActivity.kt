@@ -161,6 +161,7 @@ class GameDetailActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         AndroidInjection.inject(this)
         super.onCreate(savedInstanceState)
+        com.swordfish.lemuroid.app.tv.romm.PhoneUi.apply(this)
         client = RommClient(RommSession(this))
         setContent { Screen() }
         load(intent.getIntExtra(EXTRA_GAME_ID, -1))
@@ -266,7 +267,8 @@ class GameDetailActivity : ComponentActivity() {
     ) {
         prep = null
         launchedAt = System.currentTimeMillis()
-        gameLauncher.launchGameAsync(this, current, loadSave, true)
+        // On a phone or tablet the game opens with on-screen touch controls; on a TV with the controller-only screen
+        gameLauncher.launchGameAsync(this, current, loadSave, com.swordfish.lemuroid.lib.romm.Device.isTv(this))
     }
 
     /**
@@ -312,7 +314,7 @@ class GameDetailActivity : ComponentActivity() {
                     completed++
                 }.onFailure {
                     failed++
-                    status = "Couldn't finish syncing: ${it.message}. Playing the TV's save."
+                    status = "Couldn't finish syncing: ${it.message}. Playing the ${com.swordfish.lemuroid.lib.romm.Device.word}'s save."
                 }
             }
             withContext(Dispatchers.IO) { sync.finishBeforePlay(result, completed, failed) }
@@ -332,15 +334,15 @@ class GameDetailActivity : ComponentActivity() {
             android.app.AlertDialog.Builder(this)
                 .setTitle("Which save do you want?")
                 .setMessage(
-                    "This game's save changed on the TV and in RomM since they last matched.\n\n" +
-                        "TV save: $tvTime\nRomM save: $rommTime\n\n" +
+                    "This game's save changed on the ${com.swordfish.lemuroid.lib.romm.Device.word} and in RomM since they last matched.\n\n" +
+                        "${com.swordfish.lemuroid.lib.romm.Device.word.replaceFirstChar { it.uppercase() }} save: $tvTime\nRomM save: $rommTime\n\n" +
                         "The one you don't pick is kept in RomM's save history.",
                 )
                 .setPositiveButton("Use RomM save") { _, _ ->
                     answered = true
                     cont.resumeWith(Result.success(true))
                 }
-                .setNegativeButton("Keep TV save") { _, _ ->
+                .setNegativeButton("Keep ${com.swordfish.lemuroid.lib.romm.Device.word} save") { _, _ ->
                     answered = true
                     cont.resumeWith(Result.success(false))
                 }
@@ -350,9 +352,9 @@ class GameDetailActivity : ComponentActivity() {
 
     private fun syncProblem(e: Throwable): String =
         if ((e as? com.swordfish.lemuroid.lib.romm.RommException)?.code == 400) {
-            "Sync is turned off for this TV in RomM (Devices). Playing the TV's save."
+            "Sync is turned off for this ${com.swordfish.lemuroid.lib.romm.Device.word} in RomM (Devices). Playing the ${com.swordfish.lemuroid.lib.romm.Device.word}'s save."
         } else {
-            "Couldn't sync with RomM (${e.message}). Playing the TV's save."
+            "Couldn't sync with RomM (${e.message}). Playing the ${com.swordfish.lemuroid.lib.romm.Device.word}'s save."
         }
 
     private fun playWithSave(save: RommSave) {
@@ -422,7 +424,7 @@ class GameDetailActivity : ComponentActivity() {
         lifecycleScope.launch {
             withContext(Dispatchers.IO) { RommGameFiles(applicationContext).remove(romId) }
             onTv = false
-            status = "Removed from this TV. It downloads again the next time you play. Your saves are kept."
+            status = "Removed from this ${com.swordfish.lemuroid.lib.romm.Device.word}. It downloads again the next time you play. Your saves are kept."
         }
     }
 
@@ -577,7 +579,7 @@ class GameDetailActivity : ComponentActivity() {
                                 ) { NetplayActivity.launch(this@GameDetailActivity, info.id) }
                             }
                             TvButton(if (favorite) "★ Favorite" else "☆ Favorite") { toggleFavorite() }
-                            if (onTv) TvButton("Remove from this TV") { removeFromTv() }
+                            if (onTv) TvButton("Remove from this ${com.swordfish.lemuroid.lib.romm.Device.word}") { removeFromTv() }
                         }
                         if (status.isNotBlank()) Text(status, color = Lime, fontSize = 13.sp, lineHeight = 18.sp)
                     }
@@ -599,7 +601,7 @@ class GameDetailActivity : ComponentActivity() {
                             Modifier.weight(1f).fillMaxHeight(),
                         )
                         StatCard(
-                            "ON THIS TV",
+                            "ON THIS ${com.swordfish.lemuroid.lib.romm.Device.word.uppercase()}",
                             if (onUsb) "On the USB drive" else if (onTv) "Downloaded" else "Downloads when you play",
                             size(info.sizeBytes),
                             Modifier.weight(1f).fillMaxHeight(),
@@ -768,7 +770,7 @@ class GameDetailActivity : ComponentActivity() {
                         SaveRow(
                             state.fileName,
                             listOfNotNull(
-                                if (state.id in fromTv) "From this TV" else state.emulator?.let { "From the web player ($it)" },
+                                if (state.id in fromTv) "From this ${com.swordfish.lemuroid.lib.romm.Device.word}" else state.emulator?.let { "From the web player ($it)" },
                                 date(state.updatedAt),
                                 size(state.size),
                             ).joinToString("   ·   "),
@@ -779,7 +781,7 @@ class GameDetailActivity : ComponentActivity() {
                     if (saves.isEmpty() && states.isEmpty()) {
                         "Nothing in RomM for this game yet. Your saves and save states upload after you play."
                     } else {
-                        "In-game saves replace this TV's save (the old one is kept as a backup). A save state starts the game " +
+                        "In-game saves replace this ${com.swordfish.lemuroid.lib.romm.Device.word}'s save (the old one is kept as a backup). A save state starts the game " +
                             "exactly where it was made; states from the web player may not load if its emulator version differs."
                     },
                     color = Quiet,
@@ -799,7 +801,7 @@ class GameDetailActivity : ComponentActivity() {
         val cancel = remember { FocusRequester() }
         LaunchedEffect(Unit) { runCatching { cancel.requestFocus() } }
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 80.dp, vertical = 48.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 80.dp, vertical = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(48.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -808,7 +810,8 @@ class GameDetailActivity : ComponentActivity() {
                 description = "Cover",
                 modifier = Modifier.width(210.dp).height(280.dp).clip(RoundedCornerShape(10.dp)),
             )
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // scrolls on short (phone) screens
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("GETTING READY", color = Quiet, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp)
                 Text(detail?.title ?: current.title, color = TextColor, fontSize = 32.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold)
 
