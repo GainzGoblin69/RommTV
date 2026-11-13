@@ -18,6 +18,7 @@
 #ifndef LIBRETRODROID_JAVAUTILS_H
 #define LIBRETRODROID_JAVAUTILS_H
 
+#include <functional>
 #include "unordered_map"
 #include "string"
 

@@ -334,7 +334,7 @@ bool Environment::handle_callback_environment(unsigned cmd, void *data) {
 
         case RETRO_ENVIRONMENT_SET_MEMORY_MAPS:
             LOGD("Called RETRO_ENVIRONMENT_SET_MEMORY_MAPS");
-            Achievements::getInstance().setMemoryMap(static_cast<const struct retro_memory_map*>(data));
+            libretrodroid::Achievements::getInstance().setMemoryMap(static_cast<const struct retro_memory_map*>(data));
             return true;
 
         case RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS:
