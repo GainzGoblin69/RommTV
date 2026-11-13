@@ -14,5 +14,6 @@ include(
     ":lemuroid-app",
     ":lemuroid-metadata-libretro-db",
     ":lemuroid-app-ext-free",
+    ":libretrodroid",
 )
 

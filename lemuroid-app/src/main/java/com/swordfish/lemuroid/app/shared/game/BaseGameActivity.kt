@@ -127,6 +127,8 @@ abstract class BaseGameActivity : ImmersiveActivity() {
             }
         }
 
+        achievementPopups = com.swordfish.lemuroid.app.tv.romm.AchievementPopups(this).also { it.attach() }
+
         lifecycleScope.launch {
             baseGameScreenViewModel.loadGame(
                 applicationContext,
@@ -350,7 +352,10 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         super.onStop()
     }
 
+    private var achievementPopups: com.swordfish.lemuroid.app.tv.romm.AchievementPopups? = null
+
     override fun onDestroy() {
+        achievementPopups?.detach()
         if (!isChangingConfigurations) {
             GameService.requestTermination()
         }

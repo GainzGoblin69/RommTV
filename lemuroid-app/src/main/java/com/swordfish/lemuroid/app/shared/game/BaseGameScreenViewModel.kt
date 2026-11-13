@@ -187,6 +187,11 @@ class BaseGameScreenViewModel(
                 saves.restoreAutoSaveAsync(it)
             }
         }
+        viewModelScope.launch {
+            // RetroAchievements start once the core is running the game (its memory is ready by then)
+            retroGameView.waitGLEvent<com.swordfish.libretrodroid.GLRetroView.GLRetroEvents.FrameRendered>()
+            com.swordfish.lemuroid.app.tv.romm.GameAchievements.start(appContext, gameData)
+        }
         return result
     }
 

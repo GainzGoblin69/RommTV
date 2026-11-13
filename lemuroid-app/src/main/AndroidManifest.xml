@@ -141,6 +141,13 @@
             android:theme="@style/LemuroidLeanbackTheme" />
 
         <activity
+            android:name=".app.tv.romm.RetroAchievementsActivity"
+            android:screenOrientation="sensorLandscape"
+            android:windowSoftInputMode="adjustResize"
+            android:exported="false"
+            android:theme="@style/LemuroidLeanbackTheme" />
+
+        <activity
             android:name=".app.tv.romm.ConsoleControlsActivity"
             android:screenOrientation="sensorLandscape"
             android:exported="false"

@@ -525,6 +525,27 @@ class RommClient(private val session: RommSession) {
         return emptyMap()
     }
 
+    /** The RetroAchievements username set in your RomM profile, if any. */
+    fun raUsername(): String? =
+        JSONObject(getJson(url("api/users/me").build())).optStringOrNull("ra_username")?.takeIf { it.isNotBlank() }
+
+    /**
+     * Asks RomM to fetch your latest RetroAchievements progress (only what changed), so achievements earned
+     * while playing show up on the game page. False if RomM has no RetroAchievements username for you.
+     */
+    fun refreshRetroAchievements(): Boolean {
+        val me = JSONObject(getJson(url("api/users/me").build()))
+        if (me.optStringOrNull("ra_username").isNullOrBlank()) return false
+        val id = me.getInt("id")
+        val body = JSONObject().put("incremental", true)
+        val request =
+            authed(Request.Builder().url(url("api/users").addPathSegment(id.toString()).addPathSegment("ra").addPathSegment("refresh").build()))
+                .post(body.toString().toRequestBody(JSON))
+                .build()
+        execute(request).close()
+        return true
+    }
+
     /** How many netplay rooms are open for a game right now. */
     fun netplayRooms(romId: Int): Int =
         JSONObject(getJson(url("api/netplay/list").addQueryParameter("game_id", romId.toString()).build())).length()

@@ -125,6 +125,9 @@ class BigPictureFragment : Fragment() {
 
     private var touchVibration by mutableStateOf("press")
 
+    /** Bumped when the screen comes back, so Settings re-reads things changed elsewhere (like RetroAchievements). */
+    private var resumeCount by mutableStateOf(0)
+
     private var syncStatus by mutableStateOf<com.swordfish.lemuroid.lib.romm.RommLibraryStatus.Status?>(null)
 
     /** Picks up games added to RomM since the last look: syncs when the app comes back and the last sync is over 15 minutes old. */
@@ -225,6 +228,7 @@ class BigPictureFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        resumeCount++
         syncIfStale()
         refreshInstalledIds()
         if (tab == Tab.INSTALLED) refreshInstalled()
@@ -931,6 +935,14 @@ class BigPictureFragment : Fragment() {
                 SettingTile("Check for updates", "Build ${com.swordfish.lemuroid.BuildConfig.VERSION_CODE} installed") {
                     Toast.makeText(requireContext(), "Checking for a newer build…", Toast.LENGTH_SHORT).show()
                     AppUpdater.checkInBackground(requireActivity(), viewLifecycleOwner.lifecycleScope)
+                }
+                SettingTile(
+                    "RetroAchievements",
+                    com.swordfish.lemuroid.app.tv.romm.RetroAchievementsAccount.load(requireContext())?.takeIf { resumeCount >= 0 }?.let {
+                        if (it.enabled) "Earning as ${it.username}" else "Off (signed in as ${it.username})"
+                    } ?: "Sign in to earn achievements while you play",
+                ) {
+                    startActivity(Intent(requireContext(), com.swordfish.lemuroid.app.tv.romm.RetroAchievementsActivity::class.java))
                 }
                 SettingTile("Controller buttons", "A button layout for each console") {
                     com.swordfish.lemuroid.app.tv.romm.ConsoleControlsActivity.open(

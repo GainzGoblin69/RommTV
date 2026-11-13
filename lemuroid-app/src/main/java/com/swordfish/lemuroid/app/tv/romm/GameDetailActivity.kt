@@ -189,6 +189,10 @@ class GameDetailActivity : ComponentActivity() {
             game = loaded
             favorite = loaded.isFavorite
             refreshOnTv()
+            // Achievements earned while playing: have RomM fetch them from RetroAchievements first
+            if (RetroAchievementsAccount.load(applicationContext)?.enabled == true && !detail?.achievements.isNullOrEmpty()) {
+                withContext(Dispatchers.IO) { runCatching { client.refreshRetroAchievements() } }
+            }
             refreshDetail()
         }
     }
