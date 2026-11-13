@@ -14,7 +14,10 @@
 
 #include "../../libretro-common/include/libretro.h"
 
-struct rc_client_t;
+// rcheevos types at global scope (forward-declaring them inside the class would put them in our namespace)
+#include "rc_client.h"
+#include "rc_api_request.h"
+#include "rcheevos/src/rc_libretro.h"
 
 namespace libretrodroid {
 
@@ -58,13 +61,13 @@ private:
     Achievements() = default;
 
     static uint32_t readMemory(uint32_t address, uint8_t* buffer, uint32_t numBytes, rc_client_t* client);
-    static void serverCall(const struct rc_api_request_t* request, void (*callback)(const struct rc_api_server_response_t*, void*),
+    static void serverCall(const rc_api_request_t* request, rc_client_server_callback_t callback,
                            void* callbackData, rc_client_t* client);
-    static void eventHandler(const struct rc_client_event_t* event, rc_client_t* client);
+    static void eventHandler(const rc_client_event_t* event, rc_client_t* client);
     static void logMessage(const char* message, const rc_client_t* client);
     static void loginCallback(int result, const char* errorMessage, rc_client_t* client, void* userdata);
     static void loadGameCallback(int result, const char* errorMessage, rc_client_t* client, void* userdata);
-    static void getCoreMemoryInfo(uint32_t id, struct rc_libretro_core_memory_info_t* info);
+    static void getCoreMemoryInfo(uint32_t id, rc_libretro_core_memory_info_t* info);
 
     JNIEnv* env();
     void initRegionsIfNeeded(Core* core);
