@@ -79,6 +79,9 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
         queue.add(popup)
     }
 
+    /** RetroAchievements' id for the game being played (from the "game_info" event, which comes first). */
+    private var raGameId = 0
+
     override fun onGameLoaded(
         title: String,
         summary: String,
@@ -87,9 +90,19 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
     ) {
         if (achievementCount == 0) {
             show(Popup("RETROACHIEVEMENTS", title, "This game has no achievements yet.", imageUrl, false, 4))
-        } else {
-            show(Popup("RETROACHIEVEMENTS", title, summary, imageUrl, false, 4))
+            return
         }
+        // The count comes straight from RetroAchievements: the emulator's own count can miss softcore
+        // unlocks for apps RetroAchievements hasn't reviewed
+        val context = activity.applicationContext
+        val gameId = raGameId
+        Thread {
+            val account = RetroAchievementsAccount.load(context)
+            val unlocked = if (account != null && gameId > 0) RetroAchievementsAccount.unlockedIds(account, gameId) else null
+            val line =
+                unlocked?.let { "${it.size.coerceAtMost(achievementCount)} of $achievementCount achievements unlocked" } ?: summary
+            activity.runOnUiThread { show(Popup("RETROACHIEVEMENTS", title, line, imageUrl, false, 4)) }
+        }.start()
     }
 
     override fun onUnlocked(
@@ -135,6 +148,7 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
             "login_failed" -> AchievementSession.problem(c, "RetroAchievements sign-in failed: ${description ?: "unknown error"}")
             "game_info" ->
                 if (points > 0) {
+                    raGameId = points
                     AchievementSession.step(c, "Game recognised (RetroAchievements #$points)")
                 } else {
                     AchievementSession.problem(c, "RetroAchievements doesn't recognise this copy of the game (hash ${title ?: "?"})")

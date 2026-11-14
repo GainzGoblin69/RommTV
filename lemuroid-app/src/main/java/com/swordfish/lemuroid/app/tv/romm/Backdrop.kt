@@ -85,7 +85,7 @@ fun ScreenshotBackdrop(
             }
         }
         // Dim everything with the app's colour, then fade fully into it where the menus are
-        Box(Modifier.fillMaxSize().background(background.copy(alpha = 0.62f)))
+        Box(Modifier.fillMaxSize().background(background.copy(alpha = 0.57f)))
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(0f to background.copy(alpha = 0.35f), 0.45f to Color.Transparent, 1f to background),
