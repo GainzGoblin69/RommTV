@@ -273,7 +273,7 @@ fun NowPlayingChip(modifier: Modifier = Modifier) {
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 softWrap = false,
-                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, delayMillis = 2500),
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
             )
             Text(
                 playing.album,
@@ -282,7 +282,7 @@ fun NowPlayingChip(modifier: Modifier = Modifier) {
                 lineHeight = 14.sp,
                 maxLines = 1,
                 softWrap = false,
-                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, delayMillis = 2500),
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
             )
         }
         if (touch) {
