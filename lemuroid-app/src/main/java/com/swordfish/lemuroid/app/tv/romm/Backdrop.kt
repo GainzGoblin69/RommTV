@@ -73,6 +73,7 @@ fun ScreenshotBackdrop(
                         Modifier
                             .fillMaxSize()
                             .then(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(16.dp) else Modifier),
+                    onSuccess = { BackdropNow.url = urls[candidate.coerceAtMost(urls.lastIndex)] },
                     onError = {
                         if (candidate < urls.lastIndex) {
                             candidate++
@@ -97,6 +98,12 @@ fun ScreenshotBackdrop(
             ),
         )
     }
+}
+
+/** The picture showing behind the menus right now (the idle slideshow starts from it). */
+object BackdropNow {
+    @Volatile
+    var url: String? = null
 }
 
 /** Screenshots for the backdrop, by game, fetched from RomM once and kept for the app's lifetime. */

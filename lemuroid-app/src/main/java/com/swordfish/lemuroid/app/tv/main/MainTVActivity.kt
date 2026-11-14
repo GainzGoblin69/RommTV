@@ -86,8 +86,20 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
         AppUpdater.checkInBackground(this, lifecycleScope)
     }
 
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (com.swordfish.lemuroid.app.tv.romm.Idle.consumeTouch(ev)) return true
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        com.swordfish.lemuroid.app.tv.romm.Idle.touch()
+    }
+
     /** A game controller's A button presses the selected item, the same as OK on the remote. */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        // A press while the screenshot slideshow is up just ends the slideshow
+        if (com.swordfish.lemuroid.app.tv.romm.Idle.consumeKey(event)) return true
         com.swordfish.lemuroid.app.tv.romm.UiSounds.onKey(this, event)
         if (event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_A) {
             return super.dispatchKeyEvent(

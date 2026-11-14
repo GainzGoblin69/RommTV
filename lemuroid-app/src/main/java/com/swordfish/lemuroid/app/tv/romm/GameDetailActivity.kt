@@ -172,6 +172,7 @@ class GameDetailActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        Idle.touch()
         refreshOnTv()
     }
 
@@ -480,7 +481,13 @@ class GameDetailActivity : ComponentActivity() {
     }
 
     /** A game controller's A button presses the focused item, and B goes back. */
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (Idle.consumeTouch(ev)) return true
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (Idle.consumeKey(event)) return true
         UiSounds.onKey(this, event)
         return when (event.keyCode) {
             KeyEvent.KEYCODE_BUTTON_A ->
@@ -534,6 +541,7 @@ class GameDetailActivity : ComponentActivity() {
                     ?: listOfNotNull(current?.coverFrontUrl?.let { listOf(it) })
             }
 
+        val slides = remember { SlideSource(this@GameDetailActivity, retrogradeDb) }
         Box(Modifier.fillMaxSize().background(Ground)) {
             ScreenshotBackdrop(backdrop, background = Ground, secondsEach = 10)
             if (current == null) return@Box
@@ -688,6 +696,12 @@ class GameDetailActivity : ComponentActivity() {
                     Spacer(Modifier.height(12.dp))
                 }
             }
+            NowPlayingChip(Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 20.dp))
+            // After a while with nothing pressed: full-screen screenshots, starting from this game's
+            IdleSlideshowHost(
+                start = BackdropNow.url?.let { slides.slideFor(current, listOf(it)) },
+                source = slides,
+            )
         }
 
         if (showSaves && current != null) SavePicker(info?.saves.orEmpty(), info?.states.orEmpty(), info?.id)

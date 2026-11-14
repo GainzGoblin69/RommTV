@@ -36,6 +36,9 @@ class LemuroidApplication : DaggerApplication(), HasWorkerInjector, ImageLoaderF
 
         AppInitializer.getInstance(this).initializeComponent(initializeComponent)
 
+        // Background music for the menus lives in the main process (games run in their own)
+        if (isMainProcess()) com.swordfish.lemuroid.app.tv.romm.MenuMusic.init(this)
+
         DynamicColors.applyToActivitiesIfAvailable(this)
     }
 

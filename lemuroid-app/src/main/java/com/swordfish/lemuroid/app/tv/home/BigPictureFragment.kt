@@ -293,9 +293,15 @@ class BigPictureFragment : Fragment() {
             kotlinx.coroutines.delay(450)
             backdropShots = BackdropShots.forGame(requireContext(), game)
         }
+        val slides = remember { com.swordfish.lemuroid.app.tv.romm.SlideSource(requireContext(), retrogradeDb) }
         Box(Modifier.fillMaxSize()) {
             ScreenshotBackdrop(backdropShots, background = Ground)
             ScreenContent()
+            // After a while with nothing pressed: full-screen screenshots, starting from the one behind the menus
+            com.swordfish.lemuroid.app.tv.romm.IdleSlideshowHost(
+                start = shown?.let { game -> com.swordfish.lemuroid.app.tv.romm.BackdropNow.url?.let { slides.slideFor(game, listOf(it)) } },
+                source = slides,
+            )
         }
     }
 
@@ -338,6 +344,8 @@ class BigPictureFragment : Fragment() {
             }
             Spacer(Modifier.weight(1f))
             if (home.indexInProgress) Text("Syncing library…", color = Lime, fontSize = 13.sp)
+            Spacer(Modifier.width(10.dp))
+            com.swordfish.lemuroid.app.tv.romm.NowPlayingChip()
             Spacer(Modifier.width(10.dp))
             TabButton("Search", selected = tab == Tab.SEARCH) { go(Tab.SEARCH) }
         }
@@ -987,6 +995,16 @@ class BigPictureFragment : Fragment() {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SettingTile(
+                    "Menu music",
+                    if (com.swordfish.lemuroid.app.tv.romm.MenuMusic.isConfigured(requireContext()) && resumeCount >= 0) {
+                        if (com.swordfish.lemuroid.app.tv.romm.MenuMusic.settings(requireContext()).enabled) "Shuffling your music folder" else "Off"
+                    } else {
+                        "Shuffle songs from your music folder, plus the idle slideshow"
+                    },
+                ) {
+                    startActivity(Intent(requireContext(), com.swordfish.lemuroid.app.tv.romm.MenuMusicActivity::class.java))
+                }
+                SettingTile(
                     "Menu sounds: " + if (menuSounds) "On" else "Off",
                     "Soft ticks and clicks as you move around",
                 ) {
@@ -997,7 +1015,6 @@ class BigPictureFragment : Fragment() {
                     Toast.makeText(requireContext(), "Checking for a newer build…", Toast.LENGTH_SHORT).show()
                     AppUpdater.checkInBackground(requireActivity(), viewLifecycleOwner.lifecycleScope)
                 }
-                Spacer(Modifier.weight(1f))
             }
             if (!com.swordfish.lemuroid.lib.romm.Device.isTv(requireContext())) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
