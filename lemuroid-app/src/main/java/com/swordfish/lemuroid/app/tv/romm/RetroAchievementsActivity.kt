@@ -100,8 +100,9 @@ class RetroAchievementsActivity : ComponentActivity() {
         }
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean =
-        when (event.keyCode) {
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        UiSounds.onKey(this, event)
+        return when (event.keyCode) {
             KeyEvent.KEYCODE_BUTTON_A ->
                 super.dispatchKeyEvent(KeyEvent(event.downTime, event.eventTime, event.action, KeyEvent.KEYCODE_DPAD_CENTER, event.repeatCount))
             KeyEvent.KEYCODE_BUTTON_B -> {
@@ -110,6 +111,7 @@ class RetroAchievementsActivity : ComponentActivity() {
             }
             else -> super.dispatchKeyEvent(event)
         }
+    }
 
     @Composable
     private fun Screen() {
@@ -277,7 +279,7 @@ class RetroAchievementsActivity : ComponentActivity() {
         var focused by remember { mutableStateOf(false) }
         Box(
             modifier
-                .onFocusChanged { focused = it.isFocused }
+                .focusSound().onFocusChanged { focused = it.isFocused }
                 .border(2.dp, if (focused) RommSignInActivity.Lime else Color.Transparent, RoundedCornerShape(10.dp))
                 .padding(2.dp)
                 .clip(RoundedCornerShape(8.dp))

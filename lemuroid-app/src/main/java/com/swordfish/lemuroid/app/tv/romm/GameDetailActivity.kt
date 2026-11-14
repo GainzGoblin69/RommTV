@@ -481,6 +481,7 @@ class GameDetailActivity : ComponentActivity() {
 
     /** A game controller's A button presses the focused item, and B goes back. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        UiSounds.onKey(this, event)
         return when (event.keyCode) {
             KeyEvent.KEYCODE_BUTTON_A ->
                 super.dispatchKeyEvent(KeyEvent(event.downTime, event.eventTime, event.action, KeyEvent.KEYCODE_DPAD_CENTER, event.repeatCount))
@@ -1027,7 +1028,7 @@ class GameDetailActivity : ComponentActivity() {
         val shape = RoundedCornerShape(8.dp)
         Box(
             modifier
-                .onFocusChanged {
+                .focusSound().onFocusChanged {
                     if (it.isFocused && !focused) onFocused()
                     focused = it.isFocused
                 }
@@ -1053,7 +1054,7 @@ class GameDetailActivity : ComponentActivity() {
         val shape = RoundedCornerShape(10.dp)
         Box(
             modifier
-                .onFocusChanged { focused = it.isFocused }
+                .focusSound().onFocusChanged { focused = it.isFocused }
                 .border(2.dp, if (focused) Lime else Line, shape)
                 .clip(shape)
                 .background(Raised)

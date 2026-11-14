@@ -76,6 +76,8 @@ import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.romm.RommGameFiles
 import dagger.android.support.AndroidSupportInjection
 import com.swordfish.lemuroid.app.tv.romm.BackdropShots
+import com.swordfish.lemuroid.app.tv.romm.UiSounds
+import com.swordfish.lemuroid.app.tv.romm.focusSound
 import com.swordfish.lemuroid.app.tv.romm.ScreenshotBackdrop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -130,6 +132,8 @@ class BigPictureFragment : Fragment() {
     private var installedSort by mutableStateOf(InstalledSort.SIZE)
 
     private var touchVibration by mutableStateOf("press")
+
+    private var menuSounds by mutableStateOf(true)
 
     /** Bumped when the screen comes back, so Settings re-reads things changed elsewhere (like RetroAchievements). */
     private var resumeCount by mutableStateOf(0)
@@ -195,6 +199,7 @@ class BigPictureFragment : Fragment() {
         if (next == Tab.INSTALLED) refreshInstalled()
         if (next == Tab.SEARCH) loadSearchGames()
         if (next == Tab.SETTINGS) {
+            menuSounds = UiSounds.isEnabled(requireContext())
             touchVibration = emulatorPrefs().getString(getString(R.string.pref_key_haptic_feedback_mode), "press") ?: "press"
         }
     }
@@ -962,10 +967,6 @@ class BigPictureFragment : Fragment() {
                 SettingTile("Download location", "This ${com.swordfish.lemuroid.lib.romm.Device.word} or a USB drive") { showDownloadLocation() }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SettingTile("Check for updates", "Build ${com.swordfish.lemuroid.BuildConfig.VERSION_CODE} installed") {
-                    Toast.makeText(requireContext(), "Checking for a newer build…", Toast.LENGTH_SHORT).show()
-                    AppUpdater.checkInBackground(requireActivity(), viewLifecycleOwner.lifecycleScope)
-                }
                 SettingTile(
                     "RetroAchievements",
                     com.swordfish.lemuroid.app.tv.romm.RetroAchievementsAccount.load(requireContext())?.takeIf { resumeCount >= 0 }?.let {
@@ -983,6 +984,20 @@ class BigPictureFragment : Fragment() {
                 SettingTile("Emulator settings", "Controllers, display, cores and saves") {
                     startActivity(Intent(requireContext(), TVSettingsActivity::class.java))
                 }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SettingTile(
+                    "Menu sounds: " + if (menuSounds) "On" else "Off",
+                    "Soft ticks and clicks as you move around",
+                ) {
+                    menuSounds = !menuSounds
+                    UiSounds.setEnabled(requireContext(), menuSounds)
+                }
+                SettingTile("Check for updates", "Build ${com.swordfish.lemuroid.BuildConfig.VERSION_CODE} installed") {
+                    Toast.makeText(requireContext(), "Checking for a newer build…", Toast.LENGTH_SHORT).show()
+                    AppUpdater.checkInBackground(requireActivity(), viewLifecycleOwner.lifecycleScope)
+                }
+                Spacer(Modifier.weight(1f))
             }
             if (!com.swordfish.lemuroid.lib.romm.Device.isTv(requireContext())) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1146,7 +1161,7 @@ class BigPictureFragment : Fragment() {
         val shape = RoundedCornerShape(7.dp)
         Box(
             modifier
-                .onFocusChanged { focused = it.isFocused }
+                .focusSound().onFocusChanged { focused = it.isFocused }
                 .border(2.dp, if (focused) Lime else Color.Transparent, RoundedCornerShape(10.dp))
                 .padding(4.dp)
                 .clip(shape)
@@ -1175,7 +1190,7 @@ class BigPictureFragment : Fragment() {
         val shape = RoundedCornerShape(9.dp)
         Box(
             modifier
-                .onFocusChanged {
+                .focusSound().onFocusChanged {
                     focused = it.isFocused
                     if (it.isFocused) onFocused()
                 }

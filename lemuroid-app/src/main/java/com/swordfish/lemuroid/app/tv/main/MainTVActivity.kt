@@ -88,6 +88,7 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
 
     /** A game controller's A button presses the selected item, the same as OK on the remote. */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        com.swordfish.lemuroid.app.tv.romm.UiSounds.onKey(this, event)
         if (event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_A) {
             return super.dispatchKeyEvent(
                 android.view.KeyEvent(event.downTime, event.eventTime, event.action, android.view.KeyEvent.KEYCODE_DPAD_CENTER, event.repeatCount),

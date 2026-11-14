@@ -336,7 +336,7 @@ class RommSignInActivity : ComponentActivity() {
             shape = RoundedCornerShape(8.dp),
             modifier =
                 modifier
-                    .onFocusChanged { focused = it.isFocused }
+                    .focusSound().onFocusChanged { focused = it.isFocused }
                     .border(2.dp, if (focused) Lime else Color.Transparent, RoundedCornerShape(10.dp))
                     .padding(2.dp),
         ) {

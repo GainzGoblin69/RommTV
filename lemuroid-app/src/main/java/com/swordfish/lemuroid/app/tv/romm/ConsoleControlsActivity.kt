@@ -116,6 +116,7 @@ class ConsoleControlsActivity : ComponentActivity() {
             }
             return true
         }
+        UiSounds.onKey(this, event)
         if (swallowUp == key) {
             if (event.action == KeyEvent.ACTION_UP) swallowUp = null
             return true
@@ -273,7 +274,7 @@ class ConsoleControlsActivity : ComponentActivity() {
         Box(
             modifier
                 .fillMaxWidth()
-                .onFocusChanged {
+                .focusSound().onFocusChanged {
                     focused = it.isFocused
                     if (it.isFocused) onFocus()
                 }
