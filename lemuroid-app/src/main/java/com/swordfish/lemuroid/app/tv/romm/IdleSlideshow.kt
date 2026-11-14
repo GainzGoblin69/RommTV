@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -222,16 +223,22 @@ private fun SlidePicture(slide: Slide) {
     }
 }
 
-/** "♪ Song · Album" for the menu music; nothing when no music is playing. */
+/**
+ * "♪ Song · Album" for the menu music; nothing when no music is playing.
+ * On a phone or tablet, tapping it skips to the next song (on a TV it stays out of the way of the D-pad).
+ */
 @Composable
 fun NowPlayingChip(modifier: Modifier = Modifier) {
     val now by MenuMusic.nowPlaying.collectAsState()
     val playing = now ?: return
+    val context = LocalContext.current
+    val touch = remember { !com.swordfish.lemuroid.lib.romm.Device.isTv(context) }
     Row(
         modifier
             .widthIn(max = 420.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xCC161C26))
+            .then(if (touch) Modifier.clickable { MenuMusic.skip() } else Modifier)
             .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -256,6 +263,10 @@ fun NowPlayingChip(modifier: Modifier = Modifier) {
         Column {
             Text(playing.title, color = Color(0xFFE8EDF3), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(playing.album, color = Color(0xFFA9B4C2), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (touch) {
+            Spacer(Modifier.width(10.dp))
+            Text("⏭", color = Color(0xFF8FDC4E), fontSize = 16.sp)
         }
     }
 }
