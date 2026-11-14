@@ -342,11 +342,19 @@ class BigPictureFragment : Fragment() {
             Tab.values().filter { it != Tab.SEARCH }.forEach { t ->
                 TabButton(t.label, selected = tab == t, modifier = if (t == Tab.HOME) Modifier.focusRequester(first) else Modifier) { go(t) }
             }
-            Spacer(Modifier.weight(1f))
-            if (home.indexInProgress) Text("Syncing library…", color = Lime, fontSize = 13.sp)
-            Spacer(Modifier.width(10.dp))
-            com.swordfish.lemuroid.app.tv.romm.NowPlayingChip()
-            Spacer(Modifier.width(10.dp))
+            // The music line gets whatever room is left, at a fixed height, so a long song name never
+            // squeezes Search or pushes the page down; names that don't fit scroll instead
+            Row(
+                Modifier.weight(1f).height(52.dp).padding(start = 14.dp, end = 10.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (home.indexInProgress) {
+                    Text("Syncing library…", color = Lime, fontSize = 13.sp, maxLines = 1, softWrap = false)
+                    Spacer(Modifier.width(10.dp))
+                }
+                com.swordfish.lemuroid.app.tv.romm.NowPlayingChip(Modifier.weight(1f, fill = false))
+            }
             TabButton("Search", selected = tab == Tab.SEARCH) { go(Tab.SEARCH) }
         }
     }
@@ -1189,6 +1197,8 @@ class BigPictureFragment : Fragment() {
             Text(
                 text,
                 color = if (selected) Ground else if (focused) TextColor else Quiet,
+                maxLines = 1,
+                softWrap = false,
                 fontSize = 14.sp,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             )

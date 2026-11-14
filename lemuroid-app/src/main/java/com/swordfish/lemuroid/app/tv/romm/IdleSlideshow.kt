@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -227,6 +228,7 @@ private fun SlidePicture(slide: Slide) {
  * "♪ Song · Album" for the menu music; nothing when no music is playing.
  * On a phone or tablet, tapping it skips to the next song (on a TV it stays out of the way of the D-pad).
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun NowPlayingChip(modifier: Modifier = Modifier) {
     val now by MenuMusic.nowPlaying.collectAsState()
@@ -236,6 +238,7 @@ fun NowPlayingChip(modifier: Modifier = Modifier) {
     Row(
         modifier
             .widthIn(max = 420.dp)
+            .height(48.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xCC161C26))
             .then(if (touch) Modifier.clickable { MenuMusic.skip() } else Modifier)
@@ -260,9 +263,27 @@ fun NowPlayingChip(modifier: Modifier = Modifier) {
             Text("♪", color = Color(0xFF8FDC4E), fontSize = 18.sp)
             Spacer(Modifier.width(8.dp))
         }
-        Column {
-            Text(playing.title, color = Color(0xFFE8EDF3), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(playing.album, color = Color(0xFFA9B4C2), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Fixed height; names longer than the space scroll sideways
+        Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.Center) {
+            Text(
+                playing.title,
+                color = Color(0xFFE8EDF3),
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, delayMillis = 2500),
+            )
+            Text(
+                playing.album,
+                color = Color(0xFFA9B4C2),
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, delayMillis = 2500),
+            )
         }
         if (touch) {
             Spacer(Modifier.width(10.dp))
