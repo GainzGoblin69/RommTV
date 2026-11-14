@@ -330,11 +330,11 @@ class BigPictureFragment : Fragment() {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(Brush.radialGradient(listOf(Color(0xFFB4EE7E), Color(0xFF46AA28), Color(0xFF0E5C0E)))),
+            // Larry's orb, the same as in the start-up splash and the app icon
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(R.mipmap.lemuroid_launcher_round),
+                contentDescription = null,
+                modifier = Modifier.size(34.dp).clip(CircleShape),
             )
             Spacer(Modifier.width(4.dp))
             Text("RomM TV", color = TextColor, fontSize = 17.sp, fontWeight = FontWeight.Bold)

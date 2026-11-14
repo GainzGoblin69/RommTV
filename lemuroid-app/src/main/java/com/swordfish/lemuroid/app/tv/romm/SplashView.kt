@@ -147,11 +147,10 @@ class SplashView(context: Context, private val face: Bitmap?) : SurfaceView(cont
             Log.i(TAG, "Chime: $result")
         }
         try {
-            // A phone on silent or vibrate stays quiet; a TV always plays it
+            // Plays at media volume like any app sound, whatever the phone's ringer is set to
             val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            val phone = !com.swordfish.lemuroid.lib.romm.Device.isTv(context)
-            if (phone && am != null && am.ringerMode != AudioManager.RINGER_MODE_NORMAL) {
-                record("skipped: the phone is on silent or vibrate")
+            if (am != null && am.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
+                record("skipped: media volume is all the way down")
                 return
             }
             // Its own player with its own settings, prepared off the main thread, so nothing else playing
