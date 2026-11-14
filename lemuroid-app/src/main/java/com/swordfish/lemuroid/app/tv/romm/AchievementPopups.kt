@@ -104,6 +104,14 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
     /** RetroAchievements' id for the game being played (from the "game_info" event, which comes first). */
     private var raGameId = 0
 
+    /**
+     * Achievements your account already has, straight from RetroAchievements. The emulator doesn't always know
+     * them (it can miss softcore unlocks for apps RetroAchievements hasn't reviewed) and then fires them again;
+     * those repeats stay quiet. RetroAchievements itself never counts an achievement twice.
+     */
+    @Volatile
+    private var alreadyUnlocked: Set<Int> = emptySet()
+
     override fun onGameLoaded(
         title: String,
         summary: String,
@@ -121,6 +129,7 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
         Thread {
             val account = RetroAchievementsAccount.load(context)
             val unlocked = if (account != null && gameId > 0) RetroAchievementsAccount.unlockedIds(account, gameId) else null
+            if (unlocked != null) alreadyUnlocked = alreadyUnlocked + unlocked
             val line =
                 unlocked?.let { "${it.size.coerceAtMost(achievementCount)} of $achievementCount achievements unlocked" } ?: summary
             activity.runOnUiThread { show(Popup("RETROACHIEVEMENTS", title, line, imageUrl, false, 4)) }
@@ -128,11 +137,15 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
     }
 
     override fun onUnlocked(
+        id: Int,
         title: String,
         description: String,
         points: Int,
         badgeUrl: String?,
     ) {
+        if (id > 0 && id in alreadyUnlocked) return
+        if (id > 0) alreadyUnlocked = alreadyUnlocked + id
+        AchievementSession.unlocked(activity.applicationContext, title)
         show(Popup("ACHIEVEMENT UNLOCKED · $points POINTS", title, description, badgeUrl, true, 6), sound = true)
     }
 
@@ -181,7 +194,6 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
             "memory" -> AchievementSession.step(c, "Watching ${points / 1024} KB of game memory (${description ?: ""})")
             "no_memory" -> AchievementSession.problem(c, "The emulator didn't give access to the game's memory, so nothing can unlock")
             "processing" -> AchievementSession.step(c, "Checking achievements every frame")
-            "unlocked" -> AchievementSession.unlocked(c, title ?: "")
             "disconnected" -> AchievementSession.log(c, "Lost connection to RetroAchievements")
             "reconnected" -> AchievementSession.log(c, "Connection back")
         }

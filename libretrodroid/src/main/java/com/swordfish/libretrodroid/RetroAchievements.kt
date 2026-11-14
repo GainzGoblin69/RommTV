@@ -22,7 +22,8 @@ object RetroAchievements {
         /** Signed in and the game was recognised: [summary] is "X of Y achievements unlocked". */
         fun onGameLoaded(title: String, summary: String, achievementCount: Int, imageUrl: String?)
 
-        fun onUnlocked(title: String, description: String, points: Int, badgeUrl: String?)
+        /** [id] is RetroAchievements' id for the achievement. */
+        fun onUnlocked(id: Int, title: String, description: String, points: Int, badgeUrl: String?)
 
         fun onMastered(title: String, imageUrl: String?)
 
@@ -148,9 +149,12 @@ object RetroAchievements {
         main.post {
             val l = listener ?: return@post
             l.onEvent(kind, title, description, points)
+            if (kind.startsWith("unlocked")) {
+                l.onUnlocked(kind.substringAfter('#', "0").toIntOrNull() ?: 0, title ?: "", description ?: "", points, imageUrl)
+                return@post
+            }
             when (kind) {
                 "game_loaded" -> l.onGameLoaded(title ?: "", description ?: "", points, imageUrl)
-                "unlocked" -> l.onUnlocked(title ?: "", description ?: "", points, imageUrl)
                 "mastered" -> l.onMastered(title ?: "", imageUrl)
                 "disconnected" -> l.onConnection(true)
                 "reconnected" -> l.onConnection(false)

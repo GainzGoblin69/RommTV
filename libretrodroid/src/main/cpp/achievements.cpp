@@ -336,7 +336,10 @@ void Achievements::eventHandler(const rc_client_event_t* event, rc_client_t* cli
             // RetroAchievements adds a 0-point "Warning: Unknown Emulator" achievement for apps it hasn't
             // reviewed (it only means hardcore doesn't count, which RomM TV never uses), so don't announce it
             if (a->id >= 101000000) break;
-            sendMessage(self.env(), self.bridgeClass, self.onMessageMethod, "unlocked", a->title, a->description,
+            // The achievement's id rides along in the kind ("unlocked#123"), so the app can tell repeats apart
+            char kind[32];
+            snprintf(kind, sizeof(kind), "unlocked#%u", a->id);
+            sendMessage(self.env(), self.bridgeClass, self.onMessageMethod, kind, a->title, a->description,
                         (int) a->points, a->badge_url);
             break;
         }
