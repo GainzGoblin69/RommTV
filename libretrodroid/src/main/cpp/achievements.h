@@ -41,6 +41,7 @@ public:
 
     void registerBridge(JNIEnv* env, jclass bridge);
     std::string userAgentClause() const { return agentClause; }
+    bool bridgeReady() const { return bridgeClass != nullptr && onServerCallMethod != nullptr && onMessageMethod != nullptr; }
 
     /** Called on the emulation thread after every retro_run(). */
     void doFrame(Core* core);

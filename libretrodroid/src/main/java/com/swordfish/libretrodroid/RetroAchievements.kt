@@ -65,10 +65,12 @@ object RetroAchievements {
         token: String,
         consoleId: Int,
         gamePath: String,
-    ) {
+    ): String {
         userAgent = product
         val clause = nativeStart(product, username, token, consoleId, gamePath)
+        check(clause != "BRIDGE_FAIL") { "the emulator couldn't call back into the app" }
         if (clause.isNotBlank()) userAgent = "$product $clause"
+        return userAgent
     }
 
     fun stop() {

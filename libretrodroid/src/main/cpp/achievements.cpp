@@ -376,6 +376,7 @@ JNIEXPORT jstring JNICALL Java_com_swordfish_libretrodroid_RetroAchievements_nat
     env->GetJavaVM(&vm);
     self.setJavaVM(vm);
     self.registerBridge(env, clazz);
+    if (!self.bridgeReady()) return env->NewStringUTF("BRIDGE_FAIL");
     self.start(env, libretrodroid::fromJava(env, userAgent), libretrodroid::fromJava(env, username),
                libretrodroid::fromJava(env, token), consoleId, libretrodroid::fromJava(env, gamePath));
     return env->NewStringUTF(self.userAgentClause().c_str());

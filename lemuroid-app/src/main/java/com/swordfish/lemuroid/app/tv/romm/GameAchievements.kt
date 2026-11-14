@@ -54,7 +54,8 @@ object GameAchievements {
         AchievementSession.begin(context, game.fileUri, game.title, "Signing in as ${account.username}…")
         AchievementSession.log(context, "Game file: ${file.name} (${file.length()} bytes), console #$console")
         runCatching {
-            RetroAchievements.start(RetroAchievementsAccount.product, account.username, account.token, console, file.absolutePath)
+            val agent = RetroAchievements.start(RetroAchievementsAccount.product, account.username, account.token, console, file.absolutePath)
+            AchievementSession.log(context, "Started: $agent")
         }.onFailure {
             Timber.e(it, "Couldn't start RetroAchievements")
             AchievementSession.problem(context, "Couldn't start achievements: ${it.message}")
