@@ -161,6 +161,7 @@ class MenuMusicActivity : ComponentActivity() {
                     NowPlayingChip()
                 }
                 if (message.isNotBlank()) Text(message, color = RommSignInActivity.Lime, fontSize = 14.sp, modifier = Modifier.width(760.dp))
+                ChimeStatus()
                 Text(
                     "The slideshow starts when nothing has been pressed for a while: random screenshots from your games, full screen, " +
                         "with the song that's playing. Any button brings you back to where you were.",
@@ -171,6 +172,16 @@ class MenuMusicActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    /** What happened to the Larry Slop start-up chime the last time the app started. */
+    @Composable
+    private fun ChimeStatus() {
+        val prefs = getSharedPreferences("romm_ui", MODE_PRIVATE)
+        val result = prefs.getString("chime_result", null) ?: "not recorded yet"
+        val time = prefs.getLong("chime_time", 0L)
+        val whenText = if (time > 0) " (" + android.text.format.DateUtils.getRelativeTimeSpanString(time) + ")" else ""
+        Text("Start-up chime last time: $result$whenText", color = RommSignInActivity.Quiet, fontSize = 13.sp)
     }
 
     @Composable

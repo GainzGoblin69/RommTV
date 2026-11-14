@@ -139,21 +139,52 @@ class SplashView(context: Context, private val face: Bitmap?) : SurfaceView(cont
 
     /** The start-up chime (an original whoosh into a bright chord, timed to the ribbons and the flash). */
     private fun playChime() {
+        fun record(result: String) {
+            runCatching {
+                context.applicationContext.getSharedPreferences("romm_ui", Context.MODE_PRIVATE).edit()
+                    .putString("chime_result", result).putLong("chime_time", System.currentTimeMillis()).apply()
+            }
+            Log.i(TAG, "Chime: $result")
+        }
         try {
-            val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             // A phone on silent or vibrate stays quiet; a TV always plays it
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             val phone = !com.swordfish.lemuroid.lib.romm.Device.isTv(context)
-            if (phone && am != null && am.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
-            val mp = MediaPlayer.create(context, R.raw.intro_chime) ?: return
-            chime = mp // (held, so it isn't collected mid-play)
+            if (phone && am != null && am.ringerMode != AudioManager.RINGER_MODE_NORMAL) {
+                record("skipped: the phone is on silent or vibrate")
+                return
+            }
+            // Its own player with its own settings, prepared off the main thread, so nothing else playing
+            // (like the menu music player) can get in its way
+            val mp = MediaPlayer()
+            mp.setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build(),
+            )
+            context.resources.openRawResourceFd(R.raw.intro_chime).use { afd ->
+                mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+            }
             mp.setVolume(0.55f, 0.55f)
+            mp.setOnPreparedListener {
+                it.start()
+                record("played")
+            }
+            mp.setOnErrorListener { player, what, extra ->
+                record("error $what/$extra")
+                player.release()
+                if (chime === player) chime = null
+                true
+            }
             mp.setOnCompletionListener {
                 it.release()
-                chime = null
+                if (chime === it) chime = null
             }
-            mp.start()
+            chime = mp // (held, so it isn't collected mid-play)
+            mp.prepareAsync()
         } catch (e: Throwable) {
-            Log.w(TAG, "Chime unavailable: $e")
+            record("error: ${e.javaClass.simpleName} ${e.message ?: ""}".trim())
         }
     }
 
