@@ -47,6 +47,8 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
         val message: String?,
         val completed: Int,
         val failed: Int,
+        /** When the downloaded save was made (RomM's time), if one was downloaded. */
+        val downloadedAt: String? = null,
     )
 
     fun deviceId(): String {
@@ -66,6 +68,7 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
         val plan = client.negotiate(device, info.id, listOfNotNull(local), cores(info))
         val op = plan.operations.firstOrNull { it.slot == SLOT && it.action != "no_op" }
         var downloaded = false
+        var downloadedAt: String? = null
         var message: String? = null
         var completed = 0
         var failed = 0
@@ -74,6 +77,7 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
                 runCatching { download(game, op, device, plan.sessionId) }
                     .onSuccess {
                         downloaded = true
+                        downloadedAt = op.serverUpdatedAt
                         completed++
                         message = "Loaded your RomM save from ${GameDates.dateTime(op.serverUpdatedAt)}."
                     }.onFailure {
@@ -90,7 +94,7 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
                     }
             "conflict" -> return BeforePlay(plan.sessionId, local, op, false, null, 0, 0)
         }
-        return BeforePlay(plan.sessionId, local, null, downloaded, message, completed, failed)
+        return BeforePlay(plan.sessionId, local, null, downloaded, message, completed, failed, downloadedAt)
     }
 
     /** The player chose between the TV's save and RomM's after a conflict. Returns true if RomM's was loaded. */
@@ -285,6 +289,34 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
         }
     }
 
+    /**
+     * Picking up on another device: each device uploads its resume point (the auto state made when you quit) as
+     * "<game> - TV autosave.state" / "- phone autosave.state". If one of your other devices has a newer one than
+     * this device's own, it's downloaded and becomes this device's resume point, so Play continues right where
+     * you stopped over there. [notBefore] is the time of an in-game save that was just downloaded: a resume point
+     * older than that isn't used, so a newer save from the website still wins. Returns the state used, or null.
+     */
+    suspend fun pullNewerAutoState(
+        game: Game,
+        info: RommRomDetail,
+        coreID: CoreID,
+        notBefore: String?,
+    ): RommState? {
+        val mine = uploadedStateIds(info.id)
+        val candidate =
+            info.states
+                .filter { it.fileName.endsWith("autosave.state") && it.id !in mine }
+                .mapNotNull { s -> GameDates.epochMillis(s.updatedAt)?.let { s to it } }
+                .maxByOrNull { it.second } ?: return null
+        val (state, remoteTime) = candidate
+        val local = statesManager.getAutoSaveInfo(game, coreID)
+        if (local.exists && remoteTime <= local.date + 10_000) return null
+        val floor = notBefore?.let { GameDates.epochMillis(it) }
+        if (floor != null && remoteTime < floor) return null
+        useServerState(game, coreID, state)
+        return state
+    }
+
     /** States this TV uploaded, so the picker can label them. */
     fun uploadedStateIds(romId: Int): Set<Int> =
         (0..StatesManager.MAX_STATES).mapNotNull { prefs.getInt(stateKey(romId, it, "id"), -1).takeIf { id -> id > 0 } }.toSet()
@@ -448,6 +480,16 @@ class RommSync(context: Context, private val statesManager: StatesManager) {
 
 /** Dates from RomM, written the way the game page shows them. */
 object GameDates {
+    /** RomM's UTC time ("2026-11-14T08:01:02.123+00:00") as milliseconds, or null if it can't be read. */
+    fun epochMillis(iso: String?): Long? =
+        runCatching {
+            val parser =
+                java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
+                    timeZone = java.util.TimeZone.getTimeZone("UTC")
+                }
+            parser.parse(iso!!.take(19).replace(' ', 'T'))!!.time
+        }.getOrNull()
+
     fun dateTime(iso: String?): String =
         runCatching {
             val parser =

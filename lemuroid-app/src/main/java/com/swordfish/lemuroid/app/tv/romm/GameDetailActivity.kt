@@ -336,8 +336,23 @@ class GameDetailActivity : ComponentActivity() {
             withContext(Dispatchers.IO) { sync.finishBeforePlay(result, completed, failed) }
             busy = false
             status = result.message ?: if (downloaded) "Loaded your RomM save." else ""
+            // Played more recently on another device? Continue from where it stopped there
+            var fromOtherDevice = false
+            if (loadSave) {
+                val pulled =
+                    withContext(Dispatchers.IO) {
+                        runCatching { sync.pullNewerAutoState(current, info, coreFor(current), if (downloaded) result.downloadedAt else null) }
+                            .onFailure { Timber.e(it, "Couldn't get the resume point from another device") }
+                            .getOrNull()
+                    }
+                if (pulled != null) {
+                    fromOtherDevice = true
+                    status = "Continuing from where you left off on another device (${GameDates.dateTime(pulled.updatedAt)})."
+                }
+            }
             // A save that just came from RomM is newer than the TV's last position, so start the game from it
-            startGame(current, loadSave && !downloaded)
+            // (unless the other device's resume point is newer still)
+            startGame(current, loadSave && (!downloaded || fromOtherDevice))
         }
     }
 
@@ -834,7 +849,13 @@ class GameDetailActivity : ComponentActivity() {
                         SaveRow(
                             state.fileName,
                             listOfNotNull(
-                                if (state.id in fromTv) "From this ${com.swordfish.lemuroid.lib.romm.Device.word}" else state.emulator?.let { "From the web player ($it)" },
+                                when {
+                                    state.id in fromTv -> "From this ${com.swordfish.lemuroid.lib.romm.Device.word}"
+                                    // RomM TV names its states "<game> - TV autosave.state", "- phone slot 2.state"…
+                                    Regex(" - (TV|phone|tablet) (autosave|slot \\d+)\\.state$").containsMatchIn(state.fileName) ->
+                                        "From your other " + Regex(" - (TV|phone|tablet) ").find(state.fileName)!!.groupValues[1]
+                                    else -> state.emulator?.let { "From the web player ($it)" }
+                                },
                                 date(state.updatedAt),
                                 size(state.size),
                             ).joinToString("   ·   "),
