@@ -77,7 +77,8 @@ object RetroAchievementsAccount {
             val json = JSONObject(post(form))
             if (!json.optBoolean("Success", false)) return null
             val ids = json.optJSONArray("UserUnlocks") ?: return emptySet()
-            (0 until ids.length()).map { ids.getInt(it) }.toSet()
+            // Ids from 101000000 up are RetroAchievements' own notices (like "Warning: Unknown Emulator"), not real achievements
+            (0 until ids.length()).map { ids.getInt(it) }.filter { it < 101000000 }.toSet()
         }.getOrNull()
 
     private fun post(form: String): String {
