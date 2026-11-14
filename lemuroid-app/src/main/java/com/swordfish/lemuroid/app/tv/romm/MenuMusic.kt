@@ -162,9 +162,33 @@ object MenuMusic {
         }
     }
 
+    /** No music before this time (uptime ms): the start-up splash and its chime play on their own. */
+    private var holdUntil = 0L
+    private var holdJob: Job? = null
+
+    /** Keeps the music quiet for [millis] (called when the splash starts). */
+    fun hold(millis: Long) {
+        holdUntil = android.os.SystemClock.uptimeMillis() + millis
+        if (!::app.isInitialized) return
+        fadeJob?.cancel()
+        currentVolume = 0f
+        runCatching { player?.setVolume(0f, 0f) }
+        runCatching { player?.pause() }
+    }
+
     private fun resume() {
         val s = settings(app)
         if (!s.enabled || s.url.isBlank()) return
+        val wait = holdUntil - android.os.SystemClock.uptimeMillis()
+        if (wait > 0) {
+            holdJob?.cancel()
+            holdJob =
+                scope.launch {
+                    delay(wait)
+                    if (foreground) resume()
+                }
+            return
+        }
         val p = player
         if (p != null) {
             runCatching { if (!p.isPlaying) p.start() }
@@ -175,8 +199,6 @@ object MenuMusic {
         loadJob =
             scope.launch {
                 if (tracks.isEmpty()) {
-                    // Lets the startup splash and its chime finish first
-                    delay(3000)
                     tracks = withContext(Dispatchers.IO) { runCatching { scan(s) }.onFailure { Timber.e(it, "Menu music: couldn't list") }.getOrDefault(emptyList()) }
                 }
                 if (tracks.isNotEmpty() && foreground) playNext()

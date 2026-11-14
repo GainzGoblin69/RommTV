@@ -113,6 +113,8 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
     private fun showSplash() {
         val root = findViewById<FrameLayout>(android.R.id.content) ?: return
         val face = runCatching { BitmapFactory.decodeResource(resources, R.drawable.larry_head) }.getOrNull()
+        // The music waits until the splash (and its chime) is done
+        com.swordfish.lemuroid.app.tv.romm.MenuMusic.hold(((SplashView.LENGTH + 1.2f) * 1000).toLong())
         val splash = SplashView(this, face)
         root.addView(splash, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         val shownAt = System.currentTimeMillis()

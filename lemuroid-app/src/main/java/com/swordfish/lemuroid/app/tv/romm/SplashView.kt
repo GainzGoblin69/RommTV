@@ -141,7 +141,9 @@ class SplashView(context: Context, private val face: Bitmap?) : SurfaceView(cont
     private fun playChime() {
         try {
             val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            if (am != null && am.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
+            // A phone on silent or vibrate stays quiet; a TV always plays it
+            val phone = !com.swordfish.lemuroid.lib.romm.Device.isTv(context)
+            if (phone && am != null && am.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
             val mp = MediaPlayer.create(context, R.raw.intro_chime) ?: return
             chime = mp // (held, so it isn't collected mid-play)
             mp.setVolume(0.55f, 0.55f)
