@@ -61,6 +61,42 @@ object RetroAchievementsAccount {
         file(context).delete()
     }
 
+    /**
+     * The ids of the achievements you've unlocked in a game, straight from RetroAchievements (blocking).
+     * Softcore unlocks include hardcore ones. Null if it couldn't be fetched.
+     */
+    fun unlockedIds(
+        account: Account,
+        gameId: Int,
+    ): Set<Int>? =
+        runCatching {
+            val form =
+                "r=unlocks&u=" + URLEncoder.encode(account.username, "UTF-8") +
+                    "&t=" + URLEncoder.encode(account.token, "UTF-8") +
+                    "&g=$gameId&h=0"
+            val json = JSONObject(post(form))
+            if (!json.optBoolean("Success", false)) return null
+            val ids = json.optJSONArray("UserUnlocks") ?: return emptySet()
+            (0 until ids.length()).map { ids.getInt(it) }.toSet()
+        }.getOrNull()
+
+    private fun post(form: String): String {
+        val connection = URL("https://retroachievements.org/dorequest.php").openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 20_000
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("User-Agent", product)
+            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            connection.outputStream.use { it.write(form.toByteArray()) }
+            val code = connection.responseCode
+            return (if (code >= 400) connection.errorStream else connection.inputStream)?.use { it.reader().readText() } ?: ""
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     /** Signs in with RetroAchievements (blocking; call off the main thread). Keeps the token, not the password. */
     fun signIn(
         context: Context,

@@ -147,6 +147,9 @@ class GameDetailActivity : ComponentActivity() {
     private var game by mutableStateOf<Game?>(null)
     private var detail by mutableStateOf<RommRomDetail?>(null)
     private var earned by mutableStateOf<Map<String, String>>(emptyMap())
+
+    /** Achievement ids RetroAchievements itself says you've unlocked (when signed in on this device). */
+    private var raUnlocked by mutableStateOf<Set<Int>>(emptySet())
     private var failedShots by mutableStateOf<Set<String>>(emptySet())
     private var earnedFirst by mutableStateOf(false)
     private var shownAchievement by mutableStateOf<RommAchievement?>(null)
@@ -215,6 +218,10 @@ class GameDetailActivity : ComponentActivity() {
         val raId = detail?.raId ?: return
         if (detail?.achievements.isNullOrEmpty()) return
         earned = withContext(Dispatchers.IO) { runCatching { client.earnedAchievements(raId) }.getOrDefault(emptyMap()) }
+        val account = RetroAchievementsAccount.load(applicationContext)
+        if (account != null) {
+            raUnlocked = withContext(Dispatchers.IO) { RetroAchievementsAccount.unlockedIds(account, raId) } ?: raUnlocked
+        }
     }
 
     /**
@@ -750,7 +757,14 @@ class GameDetailActivity : ComponentActivity() {
         return modes.isEmpty() && maxPlayers == 0
     }
 
-    private fun isEarned(a: RommAchievement): Boolean = a.badgeId?.let { earned.containsKey(it) } ?: false
+    /**
+     * Earned if RomM says so, if RetroAchievements says so (RomM can lag behind), or if it unlocked in the last
+     * session here (shows straight away, even before either has caught up).
+     */
+    private fun isEarned(a: RommAchievement): Boolean =
+        (a.badgeId?.let { earned.containsKey(it) } ?: false) ||
+            (a.raId?.let { it in raUnlocked } == true) ||
+            (achievementSession?.unlocks?.contains(a.title) == true)
 
     private fun earnedCount(info: RommRomDetail) = info.achievements.count { isEarned(it) }
 

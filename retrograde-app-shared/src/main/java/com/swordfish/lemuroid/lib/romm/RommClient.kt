@@ -109,6 +109,8 @@ data class RommPlaySession(
 )
 
 data class RommAchievement(
+    /** RetroAchievements' id for the achievement. */
+    val raId: Int?,
     val badgeId: String?,
     val title: String,
     val description: String,
@@ -463,6 +465,7 @@ class RommClient(private val session: RommSession) {
                 (0 until ra.length()).map { i ->
                     val a = ra.getJSONObject(i)
                     RommAchievement(
+                        raId = if (a.isNull("ra_id")) null else a.optInt("ra_id").takeIf { it > 0 },
                         badgeId = a.optStringOrNull("badge_id"),
                         title = a.optStringOrNull("title") ?: "",
                         description = a.optStringOrNull("description") ?: "",
