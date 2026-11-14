@@ -135,6 +135,9 @@ class BigPictureFragment : Fragment() {
 
     private var menuSounds by mutableStateOf(true)
 
+    /** The RomM user this device is signed in as (devices only share saves when it's the same user). */
+    private var rommUser by mutableStateOf<String?>(null)
+
     /** Bumped when the screen comes back, so Settings re-reads things changed elsewhere (like RetroAchievements). */
     private var resumeCount by mutableStateOf(0)
 
@@ -200,6 +203,13 @@ class BigPictureFragment : Fragment() {
         if (next == Tab.SEARCH) loadSearchGames()
         if (next == Tab.SETTINGS) {
             menuSounds = UiSounds.isEnabled(requireContext())
+            val ctx = requireContext().applicationContext
+            viewLifecycleOwner.lifecycleScope.launch {
+                rommUser =
+                    withContext(Dispatchers.IO) {
+                        runCatching { com.swordfish.lemuroid.lib.romm.RommClient(com.swordfish.lemuroid.lib.romm.RommSession(ctx)).username() }.getOrNull()
+                    } ?: rommUser
+            }
             touchVibration = emulatorPrefs().getString(getString(R.string.pref_key_haptic_feedback_mode), "press") ?: "press"
         }
     }
@@ -979,7 +989,11 @@ class BigPictureFragment : Fragment() {
                     LibraryIndexScheduler.scheduleLibrarySync(requireContext().applicationContext)
                     Toast.makeText(requireContext(), "Syncing your library with RomM…", Toast.LENGTH_SHORT).show()
                 }
-                SettingTile("RomM account", "Connection check and sign in") { showRommStatus() }
+                SettingTile(
+                    "RomM account",
+                    rommUser?.let { "Signed in as $it · saves are shared with every device signed in as $it" }
+                        ?: "Connection check and sign in",
+                ) { showRommStatus() }
                 SettingTile("Download location", "This ${com.swordfish.lemuroid.lib.romm.Device.word} or a USB drive") { showDownloadLocation() }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -528,6 +528,9 @@ class RommClient(private val session: RommSession) {
         return emptyMap()
     }
 
+    /** The RomM user this device is signed in as. Saves and states belong to this user. */
+    fun username(): String? = JSONObject(getJson(url("api/users/me").build())).optStringOrNull("username")
+
     /** The RetroAchievements username set in your RomM profile, if any. */
     fun raUsername(): String? =
         JSONObject(getJson(url("api/users/me").build())).optStringOrNull("ra_username")?.takeIf { it.isNotBlank() }
