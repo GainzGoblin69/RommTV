@@ -307,19 +307,20 @@ object MenuMusic {
         val files = json.optJSONArray("files")
         val dirs = json.optJSONArray("dirs")
         val names = (0 until (files?.length() ?: 0)).map { files!!.getJSONObject(it) }
+        val pictures = setOf("jpg", "jpeg", "png", "webp")
         val cover =
             names.firstOrNull { f ->
-                val n = f.optString("name").lowercase()
-                n.substringAfterLast('.') in setOf("jpg", "jpeg", "png", "webp") && IMAGES.any { n.startsWith(it) }
-            } ?: names.firstOrNull { it.optString("name").lowercase().substringAfterLast('.') in setOf("jpg", "jpeg", "png", "webp") }
+                val n = nameOf(f).lowercase()
+                n.substringAfterLast('.') in pictures && IMAGES.any { n.startsWith(it) }
+            } ?: names.firstOrNull { nameOf(it).lowercase().substringAfterLast('.') in pictures }
         val coverUrl = cover?.let { dirUrl + it.optString("href") }
-        names.filter { it.optString("name").substringAfterLast('.').lowercase() in AUDIO }.forEach { f ->
-            out += Track(dirUrl + f.optString("href"), titleOf(f.optString("name")), album, coverUrl)
+        names.filter { nameOf(it).substringAfterLast('.').lowercase() in AUDIO }.forEach { f ->
+            out += Track(dirUrl + f.optString("href"), titleOf(nameOf(f)), album, coverUrl)
         }
         if (depth >= MAX_DEPTH) return
         for (i in 0 until (dirs?.length() ?: 0)) {
             val d = dirs!!.getJSONObject(i)
-            val name = d.optString("name").ifBlank { URLDecoder.decode(d.optString("href").trimEnd('/'), "UTF-8") }
+            val name = nameOf(d)
             if (name.startsWith(".")) continue
             val href = d.optString("href").let { if (it.endsWith("/")) it else "$it/" }
             // Folders inside an album (Disc 1, CD2…) keep the album's name
@@ -328,6 +329,16 @@ object MenuMusic {
                 .onFailure { Timber.w(it, "Menu music: skipped folder $name") }
         }
     }
+
+    /**
+     * A listing entry's file or folder name. Copyparty's JSON listing has no name field, only the link
+     * ("01%20-%20Overture.mp3", folders end in "/", and some carry "?k=…"), so it's decoded from that.
+     */
+    private fun nameOf(entry: JSONObject): String =
+        entry.optString("name").ifBlank {
+            val href = entry.optString("href").substringBefore('?').trimEnd('/')
+            URLDecoder.decode(href.substringAfterLast('/').replace("+", "%2B"), "UTF-8")
+        }
 
     /** "01 - Main Theme.mp3" → "Main Theme". */
     fun titleOf(fileName: String): String =
