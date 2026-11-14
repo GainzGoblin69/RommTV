@@ -31,6 +31,14 @@ object RetroAchievements {
 
         /** Unlocks are waiting for the internet ([waiting] = true) or have all been sent (false). */
         fun onConnection(waiting: Boolean)
+
+        /** Every event, including rcheevos' log lines ("log"), for diagnostics. */
+        fun onEvent(
+            kind: String,
+            title: String?,
+            description: String?,
+            points: Int,
+        ) {}
     }
 
     @Volatile
@@ -137,12 +145,14 @@ object RetroAchievements {
     ) {
         main.post {
             val l = listener ?: return@post
+            l.onEvent(kind, title, description, points)
             when (kind) {
                 "game_loaded" -> l.onGameLoaded(title ?: "", description ?: "", points, imageUrl)
                 "unlocked" -> l.onUnlocked(title ?: "", description ?: "", points, imageUrl)
                 "mastered" -> l.onMastered(title ?: "", imageUrl)
                 "disconnected" -> l.onConnection(true)
                 "reconnected" -> l.onConnection(false)
+                "log", "login_ok", "game_info", "memory", "processing" -> Unit
                 else -> l.onProblem(kind, description)
             }
         }

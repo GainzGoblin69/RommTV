@@ -122,6 +122,35 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
         show(Popup("RETROACHIEVEMENTS", "Achievements off for this game", text, null, false, 6))
     }
 
+    override fun onEvent(
+        kind: String,
+        title: String?,
+        description: String?,
+        points: Int,
+    ) {
+        val c = activity.applicationContext
+        when (kind) {
+            "log" -> AchievementSession.log(c, description ?: "")
+            "login_ok" -> AchievementSession.step(c, "Signed in as ${title ?: "you"}")
+            "login_failed" -> AchievementSession.problem(c, "RetroAchievements sign-in failed: ${description ?: "unknown error"}")
+            "game_info" ->
+                if (points > 0) {
+                    AchievementSession.step(c, "Game recognised (RetroAchievements #$points)")
+                } else {
+                    AchievementSession.problem(c, "RetroAchievements doesn't recognise this copy of the game (hash ${title ?: "?"})")
+                }
+            "game_loaded" -> AchievementSession.step(c, "$points achievements active · ${description ?: ""}")
+            "unknown_game" -> AchievementSession.problem(c, "RetroAchievements doesn't recognise this copy of the game")
+            "load_failed" -> AchievementSession.problem(c, "Couldn't load achievements: ${description ?: "unknown error"}")
+            "memory" -> AchievementSession.step(c, "Watching ${points / 1024} KB of game memory (${description ?: ""})")
+            "no_memory" -> AchievementSession.problem(c, "The emulator didn't give access to the game's memory, so nothing can unlock")
+            "processing" -> AchievementSession.step(c, "Checking achievements every frame")
+            "unlocked" -> AchievementSession.unlocked(c, title ?: "")
+            "disconnected" -> AchievementSession.log(c, "Lost connection to RetroAchievements")
+            "reconnected" -> AchievementSession.log(c, "Connection back")
+        }
+    }
+
     override fun onConnection(waiting: Boolean) {
         if (waiting && !warnedOffline) {
             warnedOffline = true

@@ -85,6 +85,7 @@ private:
     std::string agentClause;
 
     bool regionsReady = false;
+    bool reportedProcessing = false;
     void* regions = nullptr;
     Core* currentCore = nullptr;
 

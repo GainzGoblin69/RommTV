@@ -40,13 +40,24 @@ object GameAchievements {
         context: Context,
         gameData: GameLoader.GameData,
     ) {
-        val account = RetroAchievementsAccount.load(context) ?: return
-        if (!account.enabled) return
-        val system = SystemID.values().firstOrNull { it.dbname == gameData.game.systemId } ?: return
-        val console = consoleId(system) ?: return
-        val file: File = (gameData.gameFiles as? RomFiles.Standard)?.files?.firstOrNull() ?: return
+        val game = gameData.game
+        fun skip(reason: String) = AchievementSession.skipped(context, game.fileUri, game.title, reason)
+
+        val account = RetroAchievementsAccount.load(context)
+            ?: return skip("Not signed in to RetroAchievements on this ${com.swordfish.lemuroid.lib.romm.Device.word}. Settings → RetroAchievements.")
+        if (!account.enabled) return skip("RetroAchievements is switched off in Settings.")
+        val system = SystemID.values().firstOrNull { it.dbname == game.systemId }
+        val console = system?.let { consoleId(it) } ?: return skip("RetroAchievements doesn't cover this console.")
+        val file: File = (gameData.gameFiles as? RomFiles.Standard)?.files?.firstOrNull()
+            ?: return skip("The game isn't a plain file on this device, so it can't be identified.")
+
+        AchievementSession.begin(context, game.fileUri, game.title, "Signing in as ${account.username}…")
+        AchievementSession.log(context, "Game file: ${file.name} (${file.length()} bytes), console #$console")
         runCatching {
             RetroAchievements.start(RetroAchievementsAccount.product, account.username, account.token, console, file.absolutePath)
-        }.onFailure { Timber.e(it, "Couldn't start RetroAchievements") }
+        }.onFailure {
+            Timber.e(it, "Couldn't start RetroAchievements")
+            AchievementSession.problem(context, "Couldn't start achievements: ${it.message}")
+        }
     }
 }

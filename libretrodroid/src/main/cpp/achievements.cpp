@@ -92,6 +92,7 @@ void Achievements::start(JNIEnv* jniEnv, const std::string& userAgent, const std
 
     consoleId = requestedConsoleId;
     gamePath = path;
+    reportedProcessing = false;
     generation++;
 
     client = rc_client_create(readMemory, serverCall);
@@ -175,6 +176,11 @@ void Achievements::initRegionsIfNeeded(Core* core) {
         sendMessage(env(), bridgeClass, onMessageMethod, "no_memory", nullptr, nullptr, 0, nullptr);
         r->count = 0;
         r->total_size = 0;
+    } else {
+        char line[96];
+        snprintf(line, sizeof(line), "%u memory regions, %s", (unsigned) r->count,
+                 hasMemoryMap ? "from the core's memory map" : "from the core's system RAM");
+        sendMessage(env(), bridgeClass, onMessageMethod, "memory", nullptr, line, (int) r->total_size, nullptr);
     }
 }
 
@@ -194,6 +200,10 @@ void Achievements::doFrame(Core* core) {
     if (r == nullptr || r->total_size == 0) return;
     currentCore = core;
     rc_client_do_frame(client);
+    if (!reportedProcessing) {
+        reportedProcessing = true;
+        sendMessage(env(), bridgeClass, onMessageMethod, "processing", nullptr, nullptr, 0, nullptr);
+    }
 }
 
 void Achievements::idle() {
@@ -279,6 +289,8 @@ void Achievements::onServerResponse(JNIEnv* jniEnv, jlong handle, jbyteArray bod
 
 void Achievements::logMessage(const char* message, const rc_client_t*) {
     LOGI("RetroAchievements: %s", message);
+    auto& self = getInstance();
+    sendMessage(self.env(), self.bridgeClass, self.onMessageMethod, "log", nullptr, message, 0, nullptr);
 }
 
 void Achievements::loginCallback(int result, const char* errorMessage, rc_client_t* client, void*) {
@@ -288,6 +300,8 @@ void Achievements::loginCallback(int result, const char* errorMessage, rc_client
                     errorMessage ? errorMessage : "Couldn't sign in", 0, nullptr);
         return;
     }
+    sendMessage(self.env(), self.bridgeClass, self.onMessageMethod, "login_ok", rc_client_get_user_info(client) ?
+                rc_client_get_user_info(client)->display_name : nullptr, nullptr, 0, nullptr);
     rc_client_begin_identify_and_load_game(client, (uint32_t) self.consoleId, self.gamePath.c_str(), nullptr, 0,
                                            loadGameCallback, nullptr);
 }
@@ -300,6 +314,9 @@ void Achievements::loadGameCallback(int result, const char* errorMessage, rc_cli
         return;
     }
     const rc_client_game_t* game = rc_client_get_game_info(client);
+    if (game != nullptr) {
+        sendMessage(self.env(), self.bridgeClass, self.onMessageMethod, "game_info", game->hash, nullptr, (int) game->id, nullptr);
+    }
     rc_client_user_game_summary_t summary {};
     rc_client_get_user_game_summary(client, &summary);
 

@@ -130,6 +130,7 @@ class RetroAchievementsActivity : ComponentActivity() {
                 val current = account
                 if (current != null) SignedIn(current) else SignInForm()
                 if (message.isNotBlank()) Text(message, color = RommSignInActivity.Lime, fontSize = 14.sp)
+                LastGame()
                 Text(
                     "Achievements are earned in softcore mode. RetroAchievements only counts hardcore unlocks from emulators " +
                         "it has reviewed, and RomM TV isn't one of them. Your password isn't kept on this device, only a sign-in key " +
@@ -139,6 +140,37 @@ class RetroAchievementsActivity : ComponentActivity() {
                     lineHeight = 17.sp,
                     modifier = Modifier.width(720.dp).padding(top = 10.dp),
                 )
+            }
+        }
+    }
+
+    private var showLog by mutableStateOf(false)
+
+    /** The last game's achievement steps, and rcheevos' log on request, to see why something didn't unlock. */
+    @Composable
+    private fun LastGame() {
+        val session = remember { AchievementSession.read(this) } ?: return
+        Text("LAST GAME: ${session.gameTitle.uppercase()}", color = RommSignInActivity.Quiet, fontSize = 11.sp, letterSpacing = 1.4.sp,
+            modifier = Modifier.padding(top = 10.dp))
+        session.steps.forEach { Text("✓ $it", color = RommSignInActivity.TextColor, fontSize = 14.sp) }
+        session.unlocks.forEach { Text("★ Unlocked: $it", color = RommSignInActivity.Lime, fontSize = 14.sp) }
+        session.problem?.let { Text("✕ $it", color = Color(0xFFFFB74D), fontSize = 14.sp, lineHeight = 19.sp, modifier = Modifier.width(760.dp)) }
+        if (session.log.isNotEmpty()) {
+            Tile(if (showLog) "Hide log" else "Show log (${session.log.size} lines)") { showLog = !showLog }
+            if (showLog) {
+                Column(
+                    Modifier.width(900.dp).clip(RoundedCornerShape(8.dp)).background(RommSignInActivity.Panel).padding(12.dp),
+                ) {
+                    session.log.takeLast(80).forEach {
+                        Text(
+                            it,
+                            color = RommSignInActivity.Quiet,
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        )
+                    }
+                }
             }
         }
     }

@@ -172,7 +172,11 @@ class GameDetailActivity : ComponentActivity() {
         refreshOnTv()
     }
 
+    /** What happened with RetroAchievements the last time this game was played here. */
+    private var achievementSession by mutableStateOf<AchievementSession.Session?>(null)
+
     private fun refreshOnTv() {
+        achievementSession = AchievementSession.read(this)?.takeIf { it.gameUri == game?.fileUri }
         val romId = game?.let { RommSync.romId(it) } ?: return
         val files = RommGameFiles(this)
         onTv = files.isDownloaded(romId)
@@ -610,6 +614,25 @@ class GameDetailActivity : ComponentActivity() {
                             size(info.sizeBytes),
                             Modifier.weight(1f).fillMaxHeight(),
                         )
+                    }
+
+                    if (info.achievements.isNotEmpty()) {
+                        val session = achievementSession
+                        val line =
+                            when {
+                                session != null -> "Last play here: ${session.summary}"
+                                RetroAchievementsAccount.load(this@GameDetailActivity) == null ->
+                                    "To earn these here, sign in under Settings → RetroAchievements."
+                                else -> null
+                            }
+                        line?.let {
+                            Text(
+                                it,
+                                color = if (session?.problem != null) Color(0xFFFFB74D) else RommSignInActivity.Quiet,
+                                fontSize = 13.sp,
+                                lineHeight = 17.sp,
+                            )
+                        }
                     }
 
                     // Screenshots the server can't deliver are left out instead of showing empty boxes
