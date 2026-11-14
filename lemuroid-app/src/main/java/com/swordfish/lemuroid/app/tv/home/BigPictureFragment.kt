@@ -78,6 +78,7 @@ import dagger.android.support.AndroidSupportInjection
 import com.swordfish.lemuroid.app.tv.romm.BackdropShots
 import com.swordfish.lemuroid.app.tv.romm.UiSounds
 import com.swordfish.lemuroid.app.tv.romm.focusSound
+import com.swordfish.lemuroid.app.tv.romm.tapClickable
 import com.swordfish.lemuroid.app.tv.romm.ScreenshotBackdrop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -1205,7 +1206,7 @@ class BigPictureFragment : Fragment() {
                 .padding(4.dp)
                 .clip(shape)
                 .background(if (selected) Lime else if (focused) Raised else Color.Transparent)
-                .clickable(onClick = onClick)
+                .tapClickable(onClick)
                 .padding(horizontal = 13.dp, vertical = 7.dp),
         ) {
             Text(
@@ -1239,7 +1240,7 @@ class BigPictureFragment : Fragment() {
                 .padding(2.dp)
                 .clip(RoundedCornerShape(7.dp))
                 .background(Panel)
-                .clickable(onClick = onClick),
+                .tapClickable(onClick),
         ) {
             content()
         }

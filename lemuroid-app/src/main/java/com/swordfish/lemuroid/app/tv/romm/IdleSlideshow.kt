@@ -241,7 +241,7 @@ fun NowPlayingChip(modifier: Modifier = Modifier) {
             .height(48.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xCC161C26))
-            .then(if (touch) Modifier.clickable { MenuMusic.skip() } else Modifier)
+            .then(if (touch) Modifier.tapClickable { MenuMusic.skip() } else Modifier)
             .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

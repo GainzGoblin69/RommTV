@@ -5,7 +5,9 @@ import android.media.AudioAttributes
 import android.media.SoundPool
 import android.os.SystemClock
 import android.view.KeyEvent
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.focus.onFocusChanged
 import com.swordfish.lemuroid.R
 
@@ -92,6 +94,25 @@ object UiSounds {
         play(moveId, 0.7f)
     }
 }
+
+/**
+ * Like clickable, plus a short tap you can feel when pressed on a phone or tablet
+ * (follows the phone's "touch feedback" setting; TVs have nothing to vibrate).
+ */
+@Suppress("DEPRECATION")
+fun Modifier.tapClickable(onClick: () -> Unit): Modifier =
+    composed {
+        val view = androidx.compose.ui.platform.LocalView.current
+        clickable {
+            if (!com.swordfish.lemuroid.lib.romm.Device.isTv(view.context)) {
+                view.performHapticFeedback(
+                    android.view.HapticFeedbackConstants.VIRTUAL_KEY,
+                    android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+                )
+            }
+            onClick()
+        }
+    }
 
 /** Ticks when this item gets selected with the D-pad. */
 fun Modifier.focusSound(): Modifier = onFocusChanged { if (it.isFocused) UiSounds.moved() }

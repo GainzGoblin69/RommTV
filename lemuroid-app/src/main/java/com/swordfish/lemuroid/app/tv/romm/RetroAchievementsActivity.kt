@@ -284,7 +284,7 @@ class RetroAchievementsActivity : ComponentActivity() {
                 .padding(2.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(if (focused) RommSignInActivity.Green else RommSignInActivity.Panel)
-                .clickable(onClick = onClick)
+                .tapClickable(onClick)
                 .padding(horizontal = 18.dp, vertical = 11.dp),
             contentAlignment = Alignment.Center,
         ) {

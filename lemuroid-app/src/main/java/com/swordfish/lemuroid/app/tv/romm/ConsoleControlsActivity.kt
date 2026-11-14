@@ -282,7 +282,7 @@ class ConsoleControlsActivity : ComponentActivity() {
                 .padding(2.dp)
                 .clip(RoundedCornerShape(7.dp))
                 .background(if (selected) Color(0xFF1E2633) else Panel)
-                .clickable(onClick = onClick),
+                .tapClickable(onClick),
         ) {
             content()
         }

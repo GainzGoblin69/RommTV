@@ -1071,7 +1071,7 @@ class GameDetailActivity : ComponentActivity() {
                 .padding(4.dp)
                 .clip(shape)
                 .background(if (primary) Green else Raised)
-                .clickable(onClick = onClick)
+                .tapClickable(onClick)
                 .padding(horizontal = 16.dp, vertical = 9.dp),
         ) {
             Text(text, color = if (primary) Color.White else TextColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -1093,7 +1093,7 @@ class GameDetailActivity : ComponentActivity() {
                 .border(2.dp, if (focused) Lime else Line, shape)
                 .clip(shape)
                 .background(Raised)
-                .clickable(onClick = onClick),
+                .tapClickable(onClick),
         ) {
             content()
         }

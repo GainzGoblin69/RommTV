@@ -179,33 +179,83 @@ object MenuMusic {
     private fun resume() {
         val s = settings(app)
         if (!s.enabled || s.url.isBlank()) return
-        val wait = holdUntil - android.os.SystemClock.uptimeMillis()
-        if (wait > 0) {
-            holdJob?.cancel()
-            holdJob =
-                scope.launch {
-                    delay(wait)
-                    if (foreground) resume()
-                }
-            return
-        }
         val p = player
         if (p != null) {
-            runCatching { if (!p.isPlaying) p.start() }
-            fadeTo(targetVolume(), 1500)
+            if (p === prepared) startWhenAllowed(p)
             return
         }
         if (loadJob?.isActive == true) return
+        // The song list and the first song get ready during the splash, so music can start the moment the chime ends
         loadJob =
             scope.launch {
                 if (tracks.isEmpty()) {
-                    tracks = withContext(Dispatchers.IO) { runCatching { scan(s) }.onFailure { Timber.e(it, "Menu music: couldn't list") }.getOrDefault(emptyList()) }
+                    val cached = withContext(Dispatchers.IO) { readCache(s) }
+                    if (cached.isNotEmpty()) {
+                        tracks = cached
+                        // The folder is still checked for new albums, in the background
+                        scope.launch {
+                            val fresh = withContext(Dispatchers.IO) { runCatching { scan(s) }.getOrNull() }
+                            if (!fresh.isNullOrEmpty()) {
+                                tracks = fresh
+                                withContext(Dispatchers.IO) { writeCache(s, fresh) }
+                            }
+                        }
+                    } else {
+                        tracks = withContext(Dispatchers.IO) { runCatching { scan(s) }.onFailure { Timber.e(it, "Menu music: couldn't list") }.getOrDefault(emptyList()) }
+                        withContext(Dispatchers.IO) { writeCache(s, tracks) }
+                    }
                 }
                 if (tracks.isNotEmpty() && foreground) playNext()
             }
     }
 
+    /** The player that's loaded and ready to play (it may be waiting for the splash to finish). */
+    private var prepared: MediaPlayer? = null
+
+    /** Starts [mp] now, or the moment the splash's hold ends. */
+    private fun startWhenAllowed(mp: MediaPlayer) {
+        holdJob?.cancel()
+        val wait = holdUntil - android.os.SystemClock.uptimeMillis()
+        holdJob =
+            scope.launch {
+                if (wait > 0) delay(wait)
+                if (player !== mp || !foreground) return@launch
+                runCatching { if (!mp.isPlaying) mp.start() }
+                currentTrack?.let { _nowPlaying.value = NowPlaying(it.title, it.album, it.coverUrl) }
+                fadeTo(targetVolume(), 1800)
+            }
+    }
+
+    private var currentTrack: Track? = null
+
+    // ---- the song list, kept on the device so music can start without waiting for the server
+
+    private fun cacheFile() = java.io.File(app.filesDir, "menu-music-tracks.json")
+
+    private fun readCache(settings: Settings): List<Track> =
+        runCatching {
+            val o = JSONObject(cacheFile().readText())
+            if (o.optString("folder") != normalize(settings.url)) return emptyList()
+            val a = o.getJSONArray("tracks")
+            (0 until a.length()).map {
+                val t = a.getJSONObject(it)
+                Track(t.getString("url"), t.getString("title"), t.getString("album"), t.optString("cover").ifBlank { null })
+            }
+        }.getOrDefault(emptyList())
+
+    private fun writeCache(
+        settings: Settings,
+        list: List<Track>,
+    ) {
+        runCatching {
+            val a = org.json.JSONArray()
+            list.forEach { a.put(JSONObject().put("url", it.url).put("title", it.title).put("album", it.album).put("cover", it.coverUrl ?: "")) }
+            cacheFile().writeText(JSONObject().put("folder", normalize(settings.url)).put("tracks", a).toString())
+        }
+    }
+
     private fun pause() {
+        holdJob?.cancel()
         fadeTo(0f, 900) { runCatching { player?.pause() } }
     }
 
@@ -230,6 +280,8 @@ object MenuMusic {
 
     private fun stopPlayer() {
         fadeJob?.cancel()
+        holdJob?.cancel()
+        prepared = null
         player?.let { runCatching { it.release() } }
         player = null
         currentVolume = 0f
@@ -273,11 +325,9 @@ object MenuMusic {
             mp.setOnPreparedListener {
                 if (player !== mp) return@setOnPreparedListener
                 failures = 0
-                _nowPlaying.value = NowPlaying(track.title, track.album, track.coverUrl)
-                if (foreground) {
-                    it.start()
-                    fadeTo(targetVolume(), 2000)
-                }
+                prepared = mp
+                currentTrack = track
+                if (foreground) startWhenAllowed(mp)
             }
             mp.setOnCompletionListener { if (player === mp) playNext() }
             mp.setOnErrorListener { _, what, extra ->

@@ -52,12 +52,30 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
         val imageUrl: String?,
         val highlight: Boolean,
         val seconds: Int,
+        /** Plays the unlock chime when this pop-up appears. */
+        val sound: Boolean = false,
     )
 
     private val queue = mutableStateListOf<Popup>()
     private var current by mutableStateOf<Popup?>(null)
     private var visible by mutableStateOf(false)
     private var warnedOffline = false
+
+    /** The unlock chime, loaded once so it plays the moment an achievement pops. */
+    private val sounds =
+        android.media.SoundPool.Builder()
+            .setMaxStreams(2)
+            .setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_GAME)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build(),
+            ).build()
+    private val unlockSound = sounds.load(activity, com.swordfish.lemuroid.R.raw.achievement_unlock, 1)
+
+    private fun chime() {
+        sounds.play(unlockSound, 0.9f, 0.9f, 1, 0, 1f)
+    }
 
     fun attach() {
         val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
@@ -73,10 +91,14 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
 
     fun detach() {
         if (RetroAchievements.listener === this) RetroAchievements.listener = null
+        runCatching { sounds.release() }
     }
 
-    private fun show(popup: Popup) {
-        queue.add(popup)
+    private fun show(
+        popup: Popup,
+        sound: Boolean = false,
+    ) {
+        queue.add(popup.copy(sound = sound))
     }
 
     /** RetroAchievements' id for the game being played (from the "game_info" event, which comes first). */
@@ -111,14 +133,14 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
         points: Int,
         badgeUrl: String?,
     ) {
-        show(Popup("ACHIEVEMENT UNLOCKED · $points POINTS", title, description, badgeUrl, true, 6))
+        show(Popup("ACHIEVEMENT UNLOCKED · $points POINTS", title, description, badgeUrl, true, 6), sound = true)
     }
 
     override fun onMastered(
         title: String,
         imageUrl: String?,
     ) {
-        show(Popup("GAME MASTERED", title, "Every achievement earned. Nice.", imageUrl, true, 8))
+        show(Popup("GAME MASTERED", title, "Every achievement earned. Nice.", imageUrl, true, 8), sound = true)
     }
 
     override fun onProblem(
@@ -196,6 +218,7 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
                 queue.removeAt(0)
                 current = next
                 visible = true
+                if (next.sound) chime()
                 delay(next.seconds * 1000L)
                 visible = false
                 delay(400)
