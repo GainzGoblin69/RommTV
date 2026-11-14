@@ -194,13 +194,14 @@ uint32_t Achievements::readMemory(uint32_t address, uint8_t* buffer, uint32_t nu
 
 void Achievements::doFrame(Core* core) {
     std::lock_guard<std::recursive_mutex> guard(lock);
-    if (client == nullptr || !rc_client_is_game_loaded(client)) return;
+    if (client == nullptr) return;
+    // rc_client finishes loading a game inside rc_client_do_frame (it checks the achievements' memory
+    // addresses there, on this thread), so do_frame has to run before the game counts as loaded.
+    // The core is already running the game here, so its memory can be mapped now.
     initRegionsIfNeeded(core);
-    auto* r = static_cast<rc_libretro_memory_regions_t*>(regions);
-    if (r == nullptr || r->total_size == 0) return;
     currentCore = core;
     rc_client_do_frame(client);
-    if (!reportedProcessing) {
+    if (!reportedProcessing && rc_client_is_game_loaded(client)) {
         reportedProcessing = true;
         sendMessage(env(), bridgeClass, onMessageMethod, "processing", nullptr, nullptr, 0, nullptr);
     }
