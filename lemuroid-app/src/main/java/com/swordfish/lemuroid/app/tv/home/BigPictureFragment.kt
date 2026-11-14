@@ -75,6 +75,8 @@ import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.romm.RommGameFiles
 import dagger.android.support.AndroidSupportInjection
+import com.swordfish.lemuroid.app.tv.romm.BackdropShots
+import com.swordfish.lemuroid.app.tv.romm.ScreenshotBackdrop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -109,6 +111,10 @@ class BigPictureFragment : Fragment() {
     private var tab by mutableStateOf(Tab.HOME)
     private var home by mutableStateOf(TVHomeViewModel.HomeViewState())
     private var recents by mutableStateOf<List<Game>>(emptyList())
+
+    /** The game whose screenshots are behind the menus. */
+    private var backdropGame by mutableStateOf<Game?>(null)
+    private var backdropShots by mutableStateOf<List<List<String>>>(emptyList())
     private var favorites by mutableStateOf<List<Game>>(emptyList())
     private var lastAdded by mutableStateOf<List<Game>>(emptyList())
     private var installedIds by mutableStateOf<Set<Int>>(emptySet())
@@ -270,7 +276,27 @@ class BigPictureFragment : Fragment() {
 
     @Composable
     private fun Screen() {
-        Column(Modifier.fillMaxSize().background(Ground)) {
+        // The backdrop follows the game you're on (after a short pause, so scrolling past games doesn't flicker);
+        // until then it shows the game you played last
+        val shown = backdropGame ?: recents.firstOrNull()
+        LaunchedEffect(shown?.fileUri) {
+            val game = shown ?: return@LaunchedEffect
+            BackdropShots.cached(game)?.let {
+                backdropShots = it
+                return@LaunchedEffect
+            }
+            kotlinx.coroutines.delay(450)
+            backdropShots = BackdropShots.forGame(requireContext(), game)
+        }
+        Box(Modifier.fillMaxSize()) {
+            ScreenshotBackdrop(backdropShots, background = Ground)
+            ScreenContent()
+        }
+    }
+
+    @Composable
+    private fun ScreenContent() {
+        Column(Modifier.fillMaxSize()) {
             TopBar()
             val system = librarySystem
             when {
@@ -377,7 +403,11 @@ class BigPictureFragment : Fragment() {
     /** The most recent game, large: cover, system, title. */
     @Composable
     private fun ContinueCard(game: Game) {
-        FocusBox(Modifier.width(430.dp).height(TILE_COVER_HEIGHT + TILE_INFO_HEIGHT), onClick = { gameInteractor.onGamePlay(game) }) {
+        FocusBox(
+            Modifier.width(430.dp).height(TILE_COVER_HEIGHT + TILE_INFO_HEIGHT),
+            onFocused = { backdropGame = game },
+            onClick = { gameInteractor.onGamePlay(game) },
+        ) {
             Row(Modifier.fillMaxSize()) {
                 Cover(game, Modifier.width(150.dp).height(TILE_COVER_HEIGHT + TILE_INFO_HEIGHT))
                 Column(
@@ -1044,7 +1074,7 @@ class BigPictureFragment : Fragment() {
     ) {
         val ready = isInstalled(game)
         val size = if (fill) Modifier.fillMaxWidth() else Modifier.width(TILE_WIDTH)
-        FocusBox(modifier.then(size), onClick = onClick) {
+        FocusBox(modifier.then(size), onFocused = { backdropGame = game }, onClick = onClick) {
             Column {
                 Cover(game, Modifier.fillMaxWidth().height(TILE_COVER_HEIGHT))
                 Column(
@@ -1137,6 +1167,7 @@ class BigPictureFragment : Fragment() {
     @Composable
     private fun FocusBox(
         modifier: Modifier = Modifier,
+        onFocused: () -> Unit = {},
         onClick: () -> Unit,
         content: @Composable () -> Unit,
     ) {
@@ -1144,7 +1175,10 @@ class BigPictureFragment : Fragment() {
         val shape = RoundedCornerShape(9.dp)
         Box(
             modifier
-                .onFocusChanged { focused = it.isFocused }
+                .onFocusChanged {
+                    focused = it.isFocused
+                    if (it.isFocused) onFocused()
+                }
                 .border(2.dp, if (focused) Lime else Line, shape)
                 .padding(2.dp)
                 .clip(RoundedCornerShape(7.dp))

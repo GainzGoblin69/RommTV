@@ -526,7 +526,15 @@ class GameDetailActivity : ComponentActivity() {
             if (preparing == null && current != null) runCatching { playFocus.requestFocus() }
         }
 
+        // This game's screenshots, softened and dimmed behind the page (the cover if RomM has none)
+        val backdrop =
+            remember(info, current?.coverFrontUrl) {
+                info?.screenshots?.map { client.imageCandidates(it) }?.takeIf { it.isNotEmpty() }
+                    ?: listOfNotNull(current?.coverFrontUrl?.let { listOf(it) })
+            }
+
         Box(Modifier.fillMaxSize().background(Ground)) {
+            ScreenshotBackdrop(backdrop, background = Ground, secondsEach = 10)
             if (current == null) return@Box
             if (preparing != null) {
                 PrepScreen(preparing, current)
