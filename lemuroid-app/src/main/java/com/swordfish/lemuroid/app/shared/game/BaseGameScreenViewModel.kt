@@ -190,7 +190,12 @@ class BaseGameScreenViewModel(
         viewModelScope.launch {
             // RetroAchievements start once the core is running the game (its memory is ready by then)
             retroGameView.waitGLEvent<com.swordfish.libretrodroid.GLRetroView.GLRetroEvents.FrameRendered>()
-            com.swordfish.lemuroid.app.tv.romm.GameAchievements.start(appContext, gameData)
+            // Cheats picked on the game page go in first; achievements stay off while any are on
+            val cheats = com.swordfish.lemuroid.app.tv.romm.GameCheats.enabled(appContext, gameData.game)
+            cheats.forEachIndexed { index, cheat ->
+                runCatching { retroGameView.retroGameView?.setCheat(index, true, cheat.code) }
+            }
+            com.swordfish.lemuroid.app.tv.romm.GameAchievements.start(appContext, gameData, cheats.size)
         }
         return result
     }

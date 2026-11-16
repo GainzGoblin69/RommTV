@@ -101,6 +101,16 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
         queue.add(popup.copy(sound = sound))
     }
 
+    /** A plain notice in the same style (players, cheats). */
+    fun notice(
+        label: String,
+        title: String,
+        detail: String?,
+        seconds: Int = 5,
+    ) {
+        activity.runOnUiThread { show(Popup(label, title, detail, null, false, seconds)) }
+    }
+
     /** RetroAchievements' id for the game being played (from the "game_info" event, which comes first). */
     private var raGameId = 0
 

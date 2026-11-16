@@ -120,6 +120,9 @@ class GameDetailActivity : ComponentActivity() {
     @Inject
     lateinit var biosManager: BiosManager
 
+    @Inject
+    lateinit var inputDeviceManager: com.swordfish.lemuroid.app.shared.input.InputDeviceManager
+
     private val sync by lazy { RommSync(this, statesManager) }
 
     /** The "Getting ready" screen's checklist, shown while a game downloads for the first time. */
@@ -157,6 +160,8 @@ class GameDetailActivity : ComponentActivity() {
     private var openRooms by mutableStateOf(0)
     private var status by mutableStateOf("Loading from RomM…")
     private var showSaves by mutableStateOf(false)
+    private var showCheats by mutableStateOf(false)
+    private var cheatsOn by mutableStateOf(0)
     private var busy by mutableStateOf(false)
     private var onTv by mutableStateOf(false)
     private var favorite by mutableStateOf(false)
@@ -195,6 +200,7 @@ class GameDetailActivity : ComponentActivity() {
                 return@launch
             }
             game = loaded
+            cheatsOn = GameCheats.enabled(this@GameDetailActivity, loaded).size
             favorite = loaded.isFavorite
             refreshOnTv()
             // Achievements earned while playing: have RomM fetch them from RetroAchievements first
@@ -620,6 +626,7 @@ class GameDetailActivity : ComponentActivity() {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             TvButton("Play", primary = true, modifier = Modifier.focusRequester(playFocus)) { play(true) }
                             TvButton("Pick a save" + (info?.saves?.size?.takeIf { it > 0 }?.let { " ($it)" } ?: "")) { showSaves = true }
+                            TvButton(if (cheatsOn > 0) "Cheats ($cheatsOn on)" else "Cheats") { showCheats = true }
                             if (info != null && supportsMultiplayer(info)) {
                                 TvButton(
                                     "Play online" + (if (openRooms > 0) " ($openRooms room" + (if (openRooms == 1) "" else "s") + " open)" else ""),
@@ -712,6 +719,7 @@ class GameDetailActivity : ComponentActivity() {
                 }
             }
             NowPlayingChip(Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 20.dp))
+            PlayersPanel(inputDeviceManager, Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 16.dp))
             // After a while with nothing pressed: full-screen screenshots, starting from this game's
             IdleSlideshowHost(
                 start = BackdropNow.url?.let { slides.slideFor(current, listOf(it)) },
@@ -720,6 +728,9 @@ class GameDetailActivity : ComponentActivity() {
         }
 
         if (showSaves && current != null) SavePicker(info?.saves.orEmpty(), info?.states.orEmpty(), info?.id)
+        if (showCheats && current != null) {
+            CheatPicker(current, onChanged = { cheatsOn = it }, onDismiss = { showCheats = false })
+        }
         shownAchievement?.let { AchievementDetail(it) }
     }
 

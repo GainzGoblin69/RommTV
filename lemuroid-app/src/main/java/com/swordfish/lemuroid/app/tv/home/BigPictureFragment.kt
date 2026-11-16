@@ -97,6 +97,9 @@ class BigPictureFragment : Fragment() {
     @Inject
     lateinit var gameInteractor: GameInteractor
 
+    @Inject
+    lateinit var inputDeviceManager: com.swordfish.lemuroid.app.shared.input.InputDeviceManager
+
     private enum class Tab(val label: String) {
         HOME("Home"),
         PLATFORMS("Platforms"),
@@ -308,6 +311,11 @@ class BigPictureFragment : Fragment() {
         Box(Modifier.fillMaxSize()) {
             ScreenshotBackdrop(backdropShots, background = Ground)
             ScreenContent()
+            // Who's player 1, 2, 3, 4: the controllers connected right now, in the order games hand them out
+            com.swordfish.lemuroid.app.tv.romm.PlayersPanel(
+                inputDeviceManager,
+                Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 16.dp),
+            )
             // After a while with nothing pressed: full-screen screenshots, starting from the one behind the menus
             com.swordfish.lemuroid.app.tv.romm.IdleSlideshowHost(
                 start = shown?.let { game -> com.swordfish.lemuroid.app.tv.romm.BackdropNow.url?.let { slides.slideFor(game, listOf(it)) } },

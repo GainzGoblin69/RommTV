@@ -128,6 +128,7 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         }
 
         achievementPopups = com.swordfish.lemuroid.app.tv.romm.AchievementPopups(this).also { it.attach() }
+        watchPlayers()
 
         lifecycleScope.launch {
             baseGameScreenViewModel.loadGame(
@@ -353,6 +354,48 @@ abstract class BaseGameActivity : ImmersiveActivity() {
     }
 
     private var achievementPopups: com.swordfish.lemuroid.app.tv.romm.AchievementPopups? = null
+
+    /**
+     * Says who's who when the game starts (P1, P2… with each controller's name) and again whenever a
+     * controller connects or disconnects, plus any cheats that are on.
+     */
+    private fun watchPlayers() {
+        val game = intent.getSerializableExtra(EXTRA_GAME) as? com.swordfish.lemuroid.lib.library.db.entity.Game
+        lifecycleScope.launch {
+            kotlinx.coroutines.delay(1500)
+            val cheats = game?.let { com.swordfish.lemuroid.app.tv.romm.GameCheats.enabled(applicationContext, it) }.orEmpty()
+            if (cheats.isNotEmpty()) {
+                achievementPopups?.notice(
+                    "CHEATS ON",
+                    cheats.take(3).joinToString(" · ") { it.description } + if (cheats.size > 3) " +${cheats.size - 3} more" else "",
+                    "RetroAchievements are paused for this game while cheats are on.",
+                    6,
+                )
+            }
+            var previous: List<com.swordfish.lemuroid.app.tv.romm.Player>? = null
+            com.swordfish.lemuroid.app.tv.romm.playersFlow(inputDeviceManager).collect { players ->
+                val before = previous
+                previous = players
+                val line = players.joinToString("   ") { "P${it.number}: ${it.name}" }
+                when {
+                    before == null && players.isNotEmpty() ->
+                        achievementPopups?.notice(
+                            "PLAYERS",
+                            if (players.size == 1) "1 controller connected" else "${players.size} controllers connected",
+                            line,
+                        )
+                    before != null && players.size > before.size ->
+                        achievementPopups?.notice("CONTROLLER CONNECTED", "Player ${players.size} joined", line)
+                    before != null && players.size < before.size ->
+                        achievementPopups?.notice(
+                            "CONTROLLER DISCONNECTED",
+                            if (players.isEmpty()) "No controllers connected" else "${players.size} left",
+                            line.ifBlank { null },
+                        )
+                }
+            }
+        }
+    }
 
     override fun onDestroy() {
         achievementPopups?.detach()

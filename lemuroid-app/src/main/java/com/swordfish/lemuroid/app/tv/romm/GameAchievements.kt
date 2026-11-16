@@ -39,9 +39,13 @@ object GameAchievements {
     fun start(
         context: Context,
         gameData: GameLoader.GameData,
+        cheatsOn: Int = 0,
     ) {
         val game = gameData.game
         fun skip(reason: String) = AchievementSession.skipped(context, game.fileUri, game.title, reason)
+        if (cheatsOn > 0) {
+            return skip("Cheats are on for this game ($cheatsOn), so achievements are paused. Turn them off with the Cheats button.")
+        }
 
         val account = RetroAchievementsAccount.load(context)
             ?: return skip("Not signed in to RetroAchievements on this ${com.swordfish.lemuroid.lib.romm.Device.word}. Settings → RetroAchievements.")
