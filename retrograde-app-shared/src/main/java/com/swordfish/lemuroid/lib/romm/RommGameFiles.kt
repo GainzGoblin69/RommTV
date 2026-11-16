@@ -257,24 +257,28 @@ class RommGameFiles(context: Context) {
     private fun systemName(systemId: String): String =
         runCatching { appContext.getString(GameSystem.findById(systemId).titleResId) }.getOrDefault(systemId)
 
-    /** Frees space on [storage] by removing the games played longest ago, keeping [needed] bytes plus a margin free. */
+    /**
+     * Checks there's room on [storage] for a download needing [needed] bytes (the download plus room to unpack it),
+     * keeping a small safety margin. Games already installed are never removed to make room: you choose what goes,
+     * in Installed. ([keep] is the game being prepared.)
+     */
     private fun makeRoom(
         storage: GameStorage,
         needed: Long,
         keep: Int,
     ) {
-        val margin = 500L * 1024 * 1024
-        fun free(): Long = runCatching { StatFs(storage.root.path).availableBytes }.getOrDefault(Long.MAX_VALUE)
-        if (free() > needed + margin) return
-        val oldestFirst =
-            storage.root.listFiles()?.filter { it.isDirectory && it.name != keep.toString() }
-                ?.sortedBy { File(it, READY_MARKER).lastModified() } ?: return
-        for (game in oldestFirst) {
-            if (free() > needed + margin) break
-            Timber.i("Removing ${game.name} to make room")
-            game.deleteRecursively()
-        }
-        if (free() < needed) throw RommException("Not enough space on the ${if (storage.isUsb) "USB drive" else Device.word} for this game")
+        val margin = 100L * 1024 * 1024
+        val free = runCatching { StatFs(storage.root.path).availableBytes }.getOrDefault(Long.MAX_VALUE)
+        if (free >= needed + margin) return
+        fun mb(bytes: Long) = if (bytes >= 1024L * 1024 * 1024) "%.1f GB".format(bytes / 1024.0 / 1024 / 1024) else "${bytes / 1024 / 1024} MB"
+        val where = if (storage.isUsb) "the USB drive" else "this ${Device.word}"
+        val tip =
+            if (storage.isUsb) {
+                "Remove a game in Installed to make room."
+            } else {
+                "Remove a game in Installed, or plug in a USB drive and choose it under Settings → Download location."
+            }
+        throw RommException("Not enough space on $where: ${mb(free)} free, this game needs about ${mb(needed + margin)}. $tip")
     }
 
     /** Deletes the game from the TV and the USB drive. */
