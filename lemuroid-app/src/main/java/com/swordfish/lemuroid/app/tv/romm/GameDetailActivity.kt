@@ -161,6 +161,7 @@ class GameDetailActivity : ComponentActivity() {
     private var status by mutableStateOf("Loading from RomM…")
     private var showSaves by mutableStateOf(false)
     private var showCheats by mutableStateOf(false)
+    private var confirmRemove by mutableStateOf(false)
     private var cheatsOn by mutableStateOf(0)
     private var busy by mutableStateOf(false)
     private var onTv by mutableStateOf(false)
@@ -633,7 +634,29 @@ class GameDetailActivity : ComponentActivity() {
                                 ) { NetplayActivity.launch(this@GameDetailActivity, info.id) }
                             }
                             TvButton(if (favorite) "★ Favorite" else "☆ Favorite") { toggleFavorite() }
-                            if (onTv) TvButton("Remove from this ${com.swordfish.lemuroid.lib.romm.Device.word}") { removeFromTv() }
+                            if (onTv) {
+                                // Just the bin; the first press asks, the second removes, so a stray press does nothing
+                                TvButton(
+                                    if (confirmRemove) "Remove?" else "",
+                                    icon = { TrashIcon(description = "Remove from this ${com.swordfish.lemuroid.lib.romm.Device.word}") },
+                                    onFocused = {},
+                                ) {
+                                    if (confirmRemove) {
+                                        confirmRemove = false
+                                        removeFromTv()
+                                    } else {
+                                        confirmRemove = true
+                                        status = "Press the bin again to remove this game from this ${com.swordfish.lemuroid.lib.romm.Device.word}. Your saves are kept."
+                                    }
+                                }
+                                LaunchedEffect(confirmRemove) {
+                                    if (confirmRemove) {
+                                        kotlinx.coroutines.delay(5000)
+                                        confirmRemove = false
+                                        if (status.startsWith("Press the bin")) status = ""
+                                    }
+                                }
+                            }
                         }
                         if (status.isNotBlank()) Text(status, color = Lime, fontSize = 13.sp, lineHeight = 18.sp)
                     }
@@ -1067,6 +1090,7 @@ class GameDetailActivity : ComponentActivity() {
         text: String,
         primary: Boolean = false,
         modifier: Modifier = Modifier,
+        icon: (@Composable () -> Unit)? = null,
         onFocused: () -> Unit = {},
         onClick: () -> Unit,
     ) {
@@ -1083,9 +1107,14 @@ class GameDetailActivity : ComponentActivity() {
                 .clip(shape)
                 .background(if (primary) Green else Raised)
                 .tapClickable(onClick)
-                .padding(horizontal = 16.dp, vertical = 9.dp),
+                .padding(horizontal = if (icon != null && text.isEmpty()) 12.dp else 16.dp, vertical = 9.dp),
         ) {
-            Text(text, color = if (primary) Color.White else TextColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                icon?.invoke()
+                if (text.isNotEmpty()) {
+                    Text(text, color = if (primary) Color.White else TextColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+            }
         }
     }
 
