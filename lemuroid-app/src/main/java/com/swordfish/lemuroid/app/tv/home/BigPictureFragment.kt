@@ -271,15 +271,30 @@ class BigPictureFragment : Fragment() {
 
     override fun onPause() {
         if (onBumper === bumperHook) onBumper = null
+        if (onNothingSelected === focusHook) onNothingSelected = null
         menuMusicFocused = false
         super.onPause()
     }
 
     private val bumperHook: (Boolean) -> Unit = { bumper(it) }
 
+    /** Whether anything on the screen is selected (a finger scroll on a phone can leave nothing selected). */
+    private var pageHasFocus = false
+
+    private val focusHook: () -> Boolean = {
+        if (pageHasFocus) {
+            false
+        } else {
+            // Start again from the current tab's button, so the controller has something to move from
+            val target = if (librarySystem != null) Tab.PLATFORMS else tab
+            runCatching { tabFocus.getValue(target).requestFocus() }.isSuccess
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         onBumper = bumperHook
+        onNothingSelected = focusHook
         resumeCount++
         syncIfStale()
         refreshInstalledIds()
@@ -353,7 +368,7 @@ class BigPictureFragment : Fragment() {
 
     @Composable
     private fun ScreenContent() {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().onFocusChanged { pageHasFocus = it.hasFocus }) {
             TopBar()
             val system = librarySystem
             when {
@@ -1315,6 +1330,12 @@ class BigPictureFragment : Fragment() {
     class Module
 
     companion object {
+        /**
+         * Set while this screen is showing: called when a controller press arrives. Returns true if nothing was
+         * selected and it selected something instead (the press is then used up).
+         */
+        var onNothingSelected: (() -> Boolean)? = null
+
         /** True while the Menu music tile in Settings is selected. */
         @Volatile
         var menuMusicFocused = false

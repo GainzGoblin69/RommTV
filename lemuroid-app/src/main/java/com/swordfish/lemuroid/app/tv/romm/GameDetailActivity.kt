@@ -508,8 +508,20 @@ class GameDetailActivity : ComponentActivity() {
         return super.dispatchTouchEvent(ev)
     }
 
+    /** Whether anything on the page is selected (a finger scroll can leave nothing selected). */
+    private var pageHasFocus = false
+    private var selectPlay: (() -> Unit)? = null
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (Idle.consumeKey(event)) return true
+        // Nothing selected: the controller's first press selects Play (and scrolls back to it) instead of vanishing
+        if (!pageHasFocus && prep == null && FocusRescue.isNavigation(event)) {
+            val select = selectPlay
+            if (select != null) {
+                select()
+                return true
+            }
+        }
         UiSounds.onKey(this, event)
         return when (event.keyCode) {
             KeyEvent.KEYCODE_BUTTON_A ->
@@ -571,10 +583,17 @@ class GameDetailActivity : ComponentActivity() {
                 PrepScreen(preparing, current)
                 return@Box
             }
+            androidx.compose.runtime.SideEffect {
+                selectPlay = {
+                    runCatching { playFocus.requestFocus() }
+                    scope.launch { scroll.animateScrollTo(0) }
+                }
+            }
             Column(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        .onFocusChanged { pageHasFocus = it.hasFocus }
                         .verticalScroll(scroll)
                         .padding(horizontal = 48.dp, vertical = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),

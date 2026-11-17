@@ -108,6 +108,12 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         // A press while the screenshot slideshow is up just ends the slideshow
         if (com.swordfish.lemuroid.app.tv.romm.Idle.consumeKey(event)) return true
+        // Nothing selected (after a finger scroll): the first controller press selects the current tab instead
+        if (com.swordfish.lemuroid.app.tv.romm.FocusRescue.isNavigation(event) &&
+            com.swordfish.lemuroid.app.tv.home.BigPictureFragment.onNothingSelected?.invoke() == true
+        ) {
+            return true
+        }
         // Holding Select for 3 seconds on the Menu music tile opens the hidden Johnny Music set-up
         if (event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_SELECT) {
             if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
