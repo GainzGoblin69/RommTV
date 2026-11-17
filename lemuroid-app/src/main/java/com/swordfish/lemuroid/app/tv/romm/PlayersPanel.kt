@@ -81,36 +81,30 @@ fun PlayersPanel(
             .background(Color(0xE0161C26))
             .border(1.dp, RommSignInActivity.Line, RoundedCornerShape(12.dp))
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.Top,
     ) {
-        Text(
-            if (players.size == 1) "1 CONTROLLER" else "${players.size} CONTROLLERS",
-            color = RommSignInActivity.Quiet,
-            fontSize = 10.sp,
-            letterSpacing = 1.2.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        players.take(8).forEach { PlayerBadge(it) }
+        players.take(4).forEach { PlayerBadge(it) }
     }
 }
 
 @Composable
 fun PlayerBadge(player: Player) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.widthIn(max = 130.dp)) {
-        Box(
-            Modifier.size(28.dp).clip(CircleShape).background(playerColor(player.number)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("P${player.number}", color = Color(0xFF0D1117), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    val color = playerColor(player.number)
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.widthIn(min = 64.dp, max = 130.dp)) {
+        if (player.number <= 4) {
+            PlayerLabelIcon(player.number, color)
+        } else {
+            Text("P${player.number}", color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
+        PlayerPadIcon(player.number, color, modifier = Modifier.padding(top = 2.dp))
         Text(
             player.name,
             color = RommSignInActivity.TextColor,
             fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 3.dp),
+            modifier = Modifier.padding(top = 4.dp),
         )
     }
 }

@@ -100,6 +100,16 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         // A press while the screenshot slideshow is up just ends the slideshow
         if (com.swordfish.lemuroid.app.tv.romm.Idle.consumeKey(event)) return true
+        // L and R bumpers switch between the tabs along the top
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_L1 || event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_R1) {
+            val hook = com.swordfish.lemuroid.app.tv.home.BigPictureFragment.onBumper
+            if (hook != null) {
+                if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                    hook(event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_R1)
+                }
+                return true
+            }
+        }
         com.swordfish.lemuroid.app.tv.romm.UiSounds.onKey(this, event)
         if (event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_A) {
             return super.dispatchKeyEvent(

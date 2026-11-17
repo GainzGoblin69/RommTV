@@ -91,6 +91,17 @@ class TVGameMenuFragment(
             connectedGamePads,
             systemCoreConfig.controllerConfigs,
         )
+
+        // An empty settings page can't be opened at all (pressing it would do nothing), so say why instead
+        if (coreOptionsScreen.preferenceCount == 0) {
+            coreOptionsScreen.addPreference(
+                Preference(coreOptionsScreen.context).apply {
+                    title = "No extra settings for this console"
+                    summary = "To change which button does what, go to Settings, then Controller buttons, on the home screen."
+                    isIconSpaceReserved = false
+                },
+            )
+        }
     }
 
     private suspend fun initializeLoadAndSave() {

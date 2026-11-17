@@ -199,6 +199,24 @@ class BigPictureFragment : Fragment() {
         back.isEnabled = librarySystem != null || tab != Tab.HOME
     }
 
+    /** One spot per tab for the selection to land on when the bumpers switch tabs. */
+    private val tabFocus = Tab.values().associateWith { FocusRequester() }
+
+    /** L and R on a controller step through Home, Platforms, Installed and Settings (and wrap around). */
+    private fun bumper(right: Boolean) {
+        val order = listOf(Tab.HOME, Tab.PLATFORMS, Tab.INSTALLED, Tab.SETTINGS)
+        val at = if (librarySystem != null) order.indexOf(Tab.PLATFORMS) else order.indexOf(tab)
+        val next =
+            when {
+                at < 0 -> if (right) order.first() else order.last()
+                right -> order[(at + 1) % order.size]
+                else -> order[(at - 1 + order.size) % order.size]
+            }
+        com.swordfish.lemuroid.app.tv.romm.UiSounds.moved()
+        go(next)
+        runCatching { tabFocus.getValue(next).requestFocus() }
+    }
+
     private fun go(next: Tab) {
         librarySystem = null
         tab = next
@@ -251,8 +269,16 @@ class BigPictureFragment : Fragment() {
         scope.launch { retrogradeDb.gameDao().selectLastAdded(18).collect { lastAdded = it } }
     }
 
+    override fun onPause() {
+        if (onBumper === bumperHook) onBumper = null
+        super.onPause()
+    }
+
+    private val bumperHook: (Boolean) -> Unit = { bumper(it) }
+
     override fun onResume() {
         super.onResume()
+        onBumper = bumperHook
         resumeCount++
         syncIfStale()
         refreshInstalledIds()
@@ -342,7 +368,7 @@ class BigPictureFragment : Fragment() {
 
     @Composable
     private fun TopBar() {
-        val first = remember { FocusRequester() }
+        val first = tabFocus.getValue(Tab.HOME)
         LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 48.dp, end = 48.dp, top = 22.dp, bottom = 10.dp),
@@ -359,7 +385,7 @@ class BigPictureFragment : Fragment() {
             Text("RomM TV", color = TextColor, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(22.dp))
             Tab.values().filter { it != Tab.SEARCH }.forEach { t ->
-                TabButton(t.label, selected = tab == t, modifier = if (t == Tab.HOME) Modifier.focusRequester(first) else Modifier) { go(t) }
+                TabButton(t.label, selected = tab == t, modifier = Modifier.focusRequester(tabFocus.getValue(t))) { go(t) }
             }
             // The music line gets whatever room is left, at a fixed height, so a long song name never
             // squeezes Search or pushes the page down; names that don't fit scroll instead
@@ -374,7 +400,7 @@ class BigPictureFragment : Fragment() {
                 }
                 com.swordfish.lemuroid.app.tv.romm.NowPlayingChip(Modifier.weight(1f, fill = false))
             }
-            TabButton("Search", selected = tab == Tab.SEARCH) { go(Tab.SEARCH) }
+            TabButton("Search", selected = tab == Tab.SEARCH, modifier = Modifier.focusRequester(tabFocus.getValue(Tab.SEARCH))) { go(Tab.SEARCH) }
         }
     }
 
@@ -827,7 +853,7 @@ class BigPictureFragment : Fragment() {
                                 item.game,
                                 fill = true,
                                 subtitle = formatBytes(item.sizeBytes) + if (item.isUsb) " · USB" else " · ${com.swordfish.lemuroid.lib.romm.Device.word}",
-                                onClick = { confirmRemove(item) },
+                                onClick = { installedOptions(item) },
                             )
                         }
                     }
@@ -919,27 +945,40 @@ class BigPictureFragment : Fragment() {
     }
 
     /** Clicking an installed game: delete it, move it to the other storage, or cancel. */
+    /** Picking a downloaded game: play it (opens its page with saves, cheats and the rest), move it or delete it. */
+    private fun installedOptions(item: InstalledGame) {
+        val context = requireContext()
+        val device = com.swordfish.lemuroid.lib.romm.Device.word
+        val actions = mutableListOf<Pair<String, () -> Unit>>()
+        actions += "Play" to { gameInteractor.onGamePlay(item.game) }
+        if (item.isUsb || usbConnected) {
+            actions += (if (item.isUsb) "Move to $device" else "Move to USB") to { moveGames(listOf(item), toUsb = !item.isUsb) }
+        }
+        actions += "Delete from ${if (item.isUsb) "USB drive" else device} (${formatBytes(item.sizeBytes)})" to { confirmRemove(item) }
+        AlertDialog.Builder(context)
+            .setTitle(item.game.title)
+            .setItems(actions.map { it.first }.toTypedArray()) { _, which -> actions[which].second() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun confirmRemove(item: InstalledGame) {
         val context = requireContext()
         val files = RommGameFiles(context.applicationContext)
-        val builder =
-            AlertDialog.Builder(context)
-                .setTitle("Delete ${item.game.title}?")
-                .setMessage(
-                    "It's on the ${if (item.isUsb) "USB drive" else com.swordfish.lemuroid.lib.romm.Device.word} and takes ${formatBytes(item.sizeBytes)}. " +
-                        "It stays in your RomM library and downloads again the next time you play it. Your saves are kept.",
-                )
-                .setPositiveButton("Delete") { _, _ ->
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        withContext(Dispatchers.IO) { files.remove(item.romId) }
-                        refreshInstalled()
-                    }
+        AlertDialog.Builder(context)
+            .setTitle("Delete ${item.game.title}?")
+            .setMessage(
+                "It's on the ${if (item.isUsb) "USB drive" else com.swordfish.lemuroid.lib.romm.Device.word} and takes ${formatBytes(item.sizeBytes)}. " +
+                    "It stays in your RomM library and downloads again the next time you play it. Your saves are kept.",
+            )
+            .setPositiveButton("Delete") { _, _ ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    withContext(Dispatchers.IO) { files.remove(item.romId) }
+                    refreshInstalled()
                 }
-                .setNegativeButton("Cancel", null)
-        if (item.isUsb || usbConnected) {
-            builder.setNeutralButton(if (item.isUsb) "Move to ${com.swordfish.lemuroid.lib.romm.Device.word}" else "Move to USB") { _, _ -> moveGames(listOf(item), toUsb = !item.isUsb) }
-        }
-        builder.show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun confirmMoveAllToUsb() {
@@ -1258,6 +1297,9 @@ class BigPictureFragment : Fragment() {
     class Module
 
     companion object {
+        /** Set while this screen is showing: the activity passes the controller's L (false) and R (true) here. */
+        var onBumper: ((Boolean) -> Unit)? = null
+
         private val TILE_WIDTH: Dp = 118.dp
         private val TILE_COVER_HEIGHT: Dp = 152.dp
         private val TILE_INFO_HEIGHT: Dp = 60.dp
