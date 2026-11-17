@@ -97,7 +97,7 @@ import javax.inject.Inject
  * The page that opens when a game is chosen: what RomM knows about it (summary, time to beat,
  * RetroAchievements, screenshots), Play, and a picker for which RomM save to start from.
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 class GameDetailActivity : ComponentActivity() {
     @Inject
     lateinit var retrogradeDb: RetrogradeDatabase
@@ -624,7 +624,11 @@ class GameDetailActivity : ComponentActivity() {
                             )
                         }
                         Spacer(Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        // Buttons that don't fit go to a second line instead of being squeezed
+                        androidx.compose.foundation.layout.FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
                             TvButton("Play", primary = true, modifier = Modifier.focusRequester(playFocus)) { play(true) }
                             TvButton("Pick a save" + (info?.saves?.size?.takeIf { it > 0 }?.let { " ($it)" } ?: "")) { showSaves = true }
                             TvButton(if (cheatsOn > 0) "Cheats ($cheatsOn on)" else "Cheats") { showCheats = true }
@@ -639,7 +643,7 @@ class GameDetailActivity : ComponentActivity() {
                                 TvButton(
                                     if (confirmRemove) "Remove?" else "",
                                     icon = { TrashIcon(description = "Remove from this ${com.swordfish.lemuroid.lib.romm.Device.word}") },
-                                    onFocused = {},
+                                    danger = confirmRemove,
                                 ) {
                                     if (confirmRemove) {
                                         confirmRemove = false
@@ -658,7 +662,9 @@ class GameDetailActivity : ComponentActivity() {
                                 }
                             }
                         }
-                        if (status.isNotBlank()) Text(status, color = Lime, fontSize = 13.sp, lineHeight = 18.sp)
+                        if (status.isNotBlank()) Text(status, color = if (confirmRemove) Danger else Lime, fontSize = 13.sp, lineHeight = 18.sp)
+                        // Who's player 1, 2, 3, 4 before you start
+                        PlayersPanel(inputDeviceManager)
                     }
                 }
 
@@ -742,7 +748,6 @@ class GameDetailActivity : ComponentActivity() {
                 }
             }
             NowPlayingChip(Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 20.dp))
-            PlayersPanel(inputDeviceManager, Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 16.dp))
             // After a while with nothing pressed: full-screen screenshots, starting from this game's
             IdleSlideshowHost(
                 start = BackdropNow.url?.let { slides.slideFor(current, listOf(it)) },
@@ -1091,6 +1096,7 @@ class GameDetailActivity : ComponentActivity() {
         primary: Boolean = false,
         modifier: Modifier = Modifier,
         icon: (@Composable () -> Unit)? = null,
+        danger: Boolean = false,
         onFocused: () -> Unit = {},
         onClick: () -> Unit,
     ) {
@@ -1105,14 +1111,21 @@ class GameDetailActivity : ComponentActivity() {
                 .border(2.dp, if (focused) Lime else Color.Transparent, RoundedCornerShape(11.dp))
                 .padding(4.dp)
                 .clip(shape)
-                .background(if (primary) Green else Raised)
+                .background(if (danger) Danger else if (primary) Green else Raised)
                 .tapClickable(onClick)
                 .padding(horizontal = if (icon != null && text.isEmpty()) 12.dp else 16.dp, vertical = 9.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 icon?.invoke()
                 if (text.isNotEmpty()) {
-                    Text(text, color = if (primary) Color.White else TextColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text(
+                        text,
+                        color = if (primary || danger) Color.White else TextColor,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
                 }
             }
         }
@@ -1204,6 +1217,7 @@ class GameDetailActivity : ComponentActivity() {
         private val Ground = RommSignInActivity.Ground
         private val Panel = RommSignInActivity.Panel
         private val Raised = Color(0xFF1E2633)
+        private val Danger = Color(0xFFC62828)
         private val Line = RommSignInActivity.Line
         private val TextColor = RommSignInActivity.TextColor
         private val Quiet = RommSignInActivity.Quiet

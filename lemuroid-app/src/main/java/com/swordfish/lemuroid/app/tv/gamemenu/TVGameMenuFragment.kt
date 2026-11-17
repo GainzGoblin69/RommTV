@@ -52,6 +52,13 @@ class TVGameMenuFragment(
         GameMenuHelper.setupFastForwardOption(preferenceScreen, fastForwardEnabled, fastForwardSupported)
         GameMenuHelper.setupSaveOption(preferenceScreen, systemCoreConfig)
 
+        // Picking a filter here takes effect as soon as the menu closes. HD mode would override it, so it goes off
+        findPreference<androidx.preference.ListPreference>(getString(R.string.pref_key_shader_filter))
+            ?.setOnPreferenceChangeListener { _, _ ->
+                preferenceManager.preferenceDataStore?.putBoolean(getString(R.string.pref_key_hd_mode), false)
+                true
+            }
+
         if (numDisks > 1) {
             GameMenuHelper.setupChangeDiskOption(activity, preferenceScreen, currentDisk, numDisks)
         }

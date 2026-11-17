@@ -537,14 +537,25 @@ class BigPictureFragment : Fragment() {
                 PlatformIcon(system, Modifier.size(48.dp))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f).fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                    // A long single word ("PlayStation") gets smaller letters rather than a break in the middle
+                    val name = system.getName(requireContext())
+                    var nameSize by remember(name) { mutableStateOf(15f) }
                     Text(
-                        system.getName(requireContext()),
+                        name,
                         color = TextColor,
-                        fontSize = 15.sp,
-                        lineHeight = 18.sp,
+                        fontSize = nameSize.sp,
+                        lineHeight = (nameSize + 3f).sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { layout ->
+                            val splitsWord =
+                                (0 until layout.lineCount - 1).any { line ->
+                                    val end = layout.getLineEnd(line)
+                                    end in 1 until name.length && name[end - 1].isLetterOrDigit() && name[end].isLetterOrDigit()
+                                }
+                            if ((splitsWord || layout.hasVisualOverflow) && nameSize > 11f) nameSize -= 1f
+                        },
                     )
                     Text("${system.count} game${if (system.count == 1) "" else "s"}", color = Lime, fontSize = 12.sp)
                 }

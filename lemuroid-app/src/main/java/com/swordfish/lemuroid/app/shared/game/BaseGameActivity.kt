@@ -355,6 +355,24 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
     private var achievementPopups: com.swordfish.lemuroid.app.tv.romm.AchievementPopups? = null
 
+    /** Coming back from the game menu: a screen filter picked there shows straight away. */
+    override fun onResume() {
+        super.onResume()
+        if (!::baseGameScreenViewModel.isInitialized || !::system.isInitialized) return
+        lifecycleScope.launch {
+            val view = baseGameScreenViewModel.retroGameView.retroGameView ?: return@launch
+            val shader =
+                ShaderChooser.getShaderForSystem(
+                    applicationContext,
+                    settingsManager.hdMode(),
+                    settingsManager.hdModeQuality(),
+                    settingsManager.screenFilter(),
+                    system,
+                )
+            if (view.shader != shader) view.shader = shader
+        }
+    }
+
     /**
      * Says who's who when the game starts (P1, P2… with each controller's name) and again whenever a
      * controller connects or disconnects, plus any cheats that are on.

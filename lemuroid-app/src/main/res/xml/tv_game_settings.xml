@@ -39,6 +39,15 @@
         app:isPreferenceVisible="false"
         app:icon="@drawable/ic_menu_disk"/>
 
+    <ListPreference
+        android:key="@string/pref_key_shader_filter"
+        android:title="Screen filter"
+        android:entries="@array/pref_key_shader_filter_display_names"
+        app:entryValues="@array/pref_key_shader_filter_values"
+        app:useSimpleSummaryProvider="true"
+        android:defaultValue="auto"
+        app:icon="@drawable/ic_menu_image"/>
+
     <PreferenceScreen
         android:key="pref_game_section_core_options"
         android:title="@string/game_menu_settings"
