@@ -271,6 +271,7 @@ class BigPictureFragment : Fragment() {
 
     override fun onPause() {
         if (onBumper === bumperHook) onBumper = null
+        menuMusicFocused = false
         super.onPause()
     }
 
@@ -1082,6 +1083,8 @@ class BigPictureFragment : Fragment() {
                     } else {
                         "Shuffle songs from your music folder, plus the idle slideshow"
                     },
+                    // Holding Select here for 3 seconds opens the hidden Johnny Music set-up
+                    modifier = Modifier.onFocusChanged { menuMusicFocused = it.isFocused },
                 ) {
                     startActivity(Intent(requireContext(), com.swordfish.lemuroid.app.tv.romm.MenuMusicActivity::class.java))
                 }
@@ -1126,9 +1129,10 @@ class BigPictureFragment : Fragment() {
     private fun androidx.compose.foundation.layout.RowScope.SettingTile(
         title: String,
         subtitle: String,
+        modifier: Modifier = Modifier,
         onClick: () -> Unit,
     ) {
-        FocusBox(Modifier.weight(1f).height(92.dp), onClick = onClick) {
+        FocusBox(Modifier.weight(1f).height(92.dp).then(modifier), onClick = onClick) {
             Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.SpaceBetween) {
                 Text(title, color = TextColor, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Text(subtitle, color = Quiet, fontSize = 12.sp, lineHeight = 16.sp)
@@ -1308,6 +1312,10 @@ class BigPictureFragment : Fragment() {
     class Module
 
     companion object {
+        /** True while the Menu music tile in Settings is selected. */
+        @Volatile
+        var menuMusicFocused = false
+
         /** Set while this screen is showing: the activity passes the controller's L (false) and R (true) here. */
         var onBumper: ((Boolean) -> Unit)? = null
 

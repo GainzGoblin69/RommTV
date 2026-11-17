@@ -61,6 +61,19 @@ class TVGameMenuFragment(
                 true
             }
 
+        // The hidden extra, once unlocked: mutes the game and shuffles the big music folder instead
+        if (com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.isUnlocked(requireContext())) {
+            preferenceScreen.addPreference(
+                androidx.preference.SwitchPreference(preferenceScreen.context).apply {
+                    key = JOHNNY
+                    title = "Johnny Music"
+                    isPersistent = false
+                    isChecked = com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.isOn
+                    setIcon(R.drawable.ic_menu_mute)
+                },
+            )
+        }
+
         if (numDisks > 1) {
             GameMenuHelper.setupChangeDiskOption(activity, preferenceScreen, currentDisk, numDisks)
         }
@@ -144,10 +157,25 @@ class TVGameMenuFragment(
     }
 
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
+        if (preference.key == JOHNNY) {
+            val turnOn = !com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.isOn
+            com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.setOn(requireContext(), turnOn)
+            // Game sound goes off with the music on, and back on with it off
+            activity?.setResult(
+                android.app.Activity.RESULT_OK,
+                android.content.Intent().putExtra(com.swordfish.lemuroid.app.shared.GameMenuContract.RESULT_ENABLE_AUDIO, !turnOn),
+            )
+            activity?.finish()
+            return true
+        }
         if (GameMenuHelper.onPreferenceTreeClicked(activity, preference)) {
             return true
         }
         return super.onPreferenceTreeClick(preference)
+    }
+
+    companion object {
+        private const val JOHNNY = "pref_game_johnny_music"
     }
 
     @dagger.Module

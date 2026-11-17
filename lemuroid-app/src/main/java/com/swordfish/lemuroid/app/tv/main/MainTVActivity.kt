@@ -96,10 +96,27 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
         com.swordfish.lemuroid.app.tv.romm.Idle.touch()
     }
 
+    private val selectHold = android.os.Handler(android.os.Looper.getMainLooper())
+    private val openJohnny =
+        Runnable {
+            if (com.swordfish.lemuroid.app.tv.home.BigPictureFragment.menuMusicFocused && !isFinishing) {
+                com.swordfish.lemuroid.app.tv.romm.JohnnyMusicSetup.show(this)
+            }
+        }
+
     /** A game controller's A button presses the selected item, the same as OK on the remote. */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         // A press while the screenshot slideshow is up just ends the slideshow
         if (com.swordfish.lemuroid.app.tv.romm.Idle.consumeKey(event)) return true
+        // Holding Select for 3 seconds on the Menu music tile opens the hidden Johnny Music set-up
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_SELECT) {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                selectHold.removeCallbacks(openJohnny)
+                selectHold.postDelayed(openJohnny, 3000)
+            } else if (event.action == android.view.KeyEvent.ACTION_UP) {
+                selectHold.removeCallbacks(openJohnny)
+            }
+        }
         // L and R bumpers switch between the tabs along the top
         if (event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_L1 || event.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_R1) {
             val hook = com.swordfish.lemuroid.app.tv.home.BigPictureFragment.onBumper

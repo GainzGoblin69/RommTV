@@ -347,7 +347,13 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         finishTriggered = true
     }
 
+    override fun onStart() {
+        super.onStart()
+        com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.resume(this)
+    }
+
     override fun onStop() {
+        com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.pause()
         if (!finishTriggered && !isFinishing && !isChangingConfigurations) {
             baseGameScreenViewModel.requestBackgroundSave()
         }
@@ -435,6 +441,7 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
     override fun onDestroy() {
         if (ScreenFilterPreview.apply === filterPreview) ScreenFilterPreview.apply = null
+        com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.stop()
         achievementPopups?.detach()
         if (!isChangingConfigurations) {
             GameService.requestTermination()
