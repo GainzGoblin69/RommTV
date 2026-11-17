@@ -25,6 +25,8 @@ class TVGameMenuActivity : TVBaseSettingsActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The paused game stays at full brightness behind the menu, so screen filters can be judged from here
+        window.setDimAmount(0f)
         if (savedInstanceState == null) {
             val game =
                 intent.extras?.getSerializable(GameMenuContract.EXTRA_GAME) as Game?

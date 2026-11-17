@@ -95,6 +95,7 @@ public:
     );
     void resume();
     void step();
+    void redraw();
     void pause();
     void destroy();
 

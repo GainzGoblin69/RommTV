@@ -61,6 +61,23 @@ class GLRetroView(
         LibretroDroid.setShaderConfig(buildShader(value))
     }
 
+    /** True while the paused game is being redrawn to show a screen filter (see [previewShader]). */
+    @Volatile
+    private var previewing = false
+
+    /**
+     * Shows [config] on the picture straight away. While the game is paused under a menu, the frozen picture is
+     * drawn again with the new filter; the game itself doesn't move and stays silent.
+     */
+    fun previewShader(config: ShaderConfig) {
+        shader = config
+        if (isEmulationReady || !isGameLoaded || isAborted) return
+        previewing = true
+        renderMode = RENDERMODE_WHEN_DIRTY
+        onResume()
+        requestRender()
+    }
+
     var viewport: RectF by Delegates.observable(RectF(0f, 0f, 1f, 1f)) { _, _, value ->
         runOnEmulationThread(true) {
             LibretroDroid.setViewport(value.left, value.top, value.width(), value.height())
@@ -302,6 +319,8 @@ class GLRetroView(
     private inner class RenderLifecycleObserver : LifecycleObserver {
         @OnLifecycleEvent(Lifecycle.Event.ON_RESUME)
         private fun resume() = catchExceptions {
+            previewing = false
+            renderMode = RENDERMODE_CONTINUOUSLY
             LibretroDroid.resume()
             onResume()
             isEmulationReady = true
@@ -310,6 +329,7 @@ class GLRetroView(
         @OnLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         private fun pause() = catchExceptions {
             isEmulationReady = false
+            previewing = false
             onPause()
             LibretroDroid.pause()
         }
@@ -322,6 +342,8 @@ class GLRetroView(
                 lifecycle?.coroutineScope?.launch {
                     retroGLEventsSubject.emit(GLRetroEvents.FrameRendered)
                 }
+            } else if (previewing && isGameLoaded) {
+                LibretroDroid.redraw()
             }
         }
 

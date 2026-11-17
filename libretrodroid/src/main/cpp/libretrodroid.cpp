@@ -449,6 +449,14 @@ void LibretroDroid::pause() {
     input = nullptr;
 }
 
+/** Draws the last picture again without running the game (to show a new screen filter while paused). */
+void LibretroDroid::redraw() {
+    std::lock_guard<std::mutex> lock(coreLock);
+    if (video) {
+        video->redrawFrame();
+    }
+}
+
 void LibretroDroid::step() {
     std::lock_guard<std::mutex> lock(coreLock);
 

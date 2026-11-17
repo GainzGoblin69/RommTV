@@ -64,7 +64,7 @@ fun ScreenshotBackdrop(
                     model =
                         ImageRequest.Builder(context)
                             .data(urls[candidate.coerceAtMost(urls.lastIndex)])
-                            .size(192, 108)
+                            .size(256, 144)
                             .build(),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
@@ -72,7 +72,7 @@ fun ScreenshotBackdrop(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .then(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(16.dp) else Modifier),
+                            .then(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(12.dp) else Modifier),
                     onSuccess = { BackdropNow.url = urls[candidate.coerceAtMost(urls.lastIndex)] },
                     onError = {
                         if (candidate < urls.lastIndex) {
@@ -86,7 +86,7 @@ fun ScreenshotBackdrop(
             }
         }
         // Dim everything with the app's colour, then fade fully into it where the menus are
-        Box(Modifier.fillMaxSize().background(background.copy(alpha = 0.52f)))
+        Box(Modifier.fillMaxSize().background(background.copy(alpha = 0.47f)))
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(0f to background.copy(alpha = 0.35f), 0.45f to Color.Transparent, 1f to background),

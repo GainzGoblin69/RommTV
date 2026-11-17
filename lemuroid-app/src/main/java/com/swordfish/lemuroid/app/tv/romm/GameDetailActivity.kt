@@ -642,7 +642,7 @@ class GameDetailActivity : ComponentActivity() {
                                 // Just the bin; the first press asks, the second removes, so a stray press does nothing
                                 TvButton(
                                     if (confirmRemove) "Remove?" else "",
-                                    icon = { TrashIcon(description = "Remove from this ${com.swordfish.lemuroid.lib.romm.Device.word}") },
+                                    icon = { TrashIcon(height = 20.dp, description = "Remove from this ${com.swordfish.lemuroid.lib.romm.Device.word}") },
                                     danger = confirmRemove,
                                 ) {
                                     if (confirmRemove) {

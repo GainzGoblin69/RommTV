@@ -54,8 +54,10 @@ class TVGameMenuFragment(
 
         // Picking a filter here takes effect as soon as the menu closes. HD mode would override it, so it goes off
         findPreference<androidx.preference.ListPreference>(getString(R.string.pref_key_shader_filter))
-            ?.setOnPreferenceChangeListener { _, _ ->
+            ?.setOnPreferenceChangeListener { _, value ->
                 preferenceManager.preferenceDataStore?.putBoolean(getString(R.string.pref_key_hd_mode), false)
+                // Show it on the paused game behind the menu straight away
+                com.swordfish.lemuroid.app.shared.game.ScreenFilterPreview.apply?.invoke(value.toString())
                 true
             }
 

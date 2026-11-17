@@ -129,6 +129,7 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
         achievementPopups = com.swordfish.lemuroid.app.tv.romm.AchievementPopups(this).also { it.attach() }
         watchPlayers()
+        ScreenFilterPreview.apply = filterPreview
 
         lifecycleScope.launch {
             baseGameScreenViewModel.loadGame(
@@ -355,6 +356,23 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
     private var achievementPopups: com.swordfish.lemuroid.app.tv.romm.AchievementPopups? = null
 
+    private val filterPreview: (String) -> Unit = { filter ->
+        runOnUiThread {
+            runCatching {
+                val view = baseGameScreenViewModel.retroGameView.retroGameView
+                val shader =
+                    ShaderChooser.getShaderForSystem(
+                        applicationContext,
+                        false,
+                        com.swordfish.lemuroid.app.shared.settings.HDModeQuality.values().first(),
+                        filter,
+                        system,
+                    )
+                view?.previewShader(shader)
+            }
+        }
+    }
+
     /** Coming back from the game menu: a screen filter picked there shows straight away. */
     override fun onResume() {
         super.onResume()
@@ -416,6 +434,7 @@ abstract class BaseGameActivity : ImmersiveActivity() {
     }
 
     override fun onDestroy() {
+        if (ScreenFilterPreview.apply === filterPreview) ScreenFilterPreview.apply = null
         achievementPopups?.detach()
         if (!isChangingConfigurations) {
             GameService.requestTermination()

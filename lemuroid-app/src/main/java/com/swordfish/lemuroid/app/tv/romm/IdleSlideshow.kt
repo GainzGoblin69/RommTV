@@ -79,6 +79,10 @@ object Idle {
         _showing.value = true
     }
 
+    fun hide() {
+        _showing.value = false
+    }
+
     fun consumeKey(event: KeyEvent): Boolean {
         touch()
         if (swallowKey == event.keyCode) {
@@ -150,8 +154,28 @@ fun IdleSlideshowHost(
     val last by Idle.lastInput.collectAsState()
     val showing by Idle.showing.collectAsState()
     val minutes = remember(last) { MenuMusic.settings(context).idleMinutes }
-    LaunchedEffect(last, minutes) {
-        if (minutes <= 0) return@LaunchedEffect
+    // Only time spent on this screen counts: time in a game (or any other screen) never starts the slideshow,
+    // and coming back from one always starts on the menu itself
+    val owner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    var resumed by remember { mutableStateOf(owner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) }
+    androidx.compose.runtime.DisposableEffect(owner) {
+        val observer =
+            androidx.lifecycle.LifecycleEventObserver { _, event ->
+                when (event) {
+                    androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                        Idle.hide()
+                        Idle.touch()
+                        resumed = true
+                    }
+                    androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> resumed = false
+                    else -> Unit
+                }
+            }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(last, minutes, resumed) {
+        if (minutes <= 0 || !resumed) return@LaunchedEffect
         delay(minutes * 60_000L)
         Idle.show()
     }

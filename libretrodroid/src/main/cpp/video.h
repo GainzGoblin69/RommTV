@@ -83,6 +83,12 @@ public:
         return renderer->getFramebuffer();
     };
 
+    /** Draws the current picture again even if it hasn't changed (a new shader needs a fresh draw). */
+    void redrawFrame() {
+        isDirty = true;
+        renderFrame();
+    }
+
     bool rendersInVideoCallback() {
         return renderer->rendersInVideoCallback();
     }

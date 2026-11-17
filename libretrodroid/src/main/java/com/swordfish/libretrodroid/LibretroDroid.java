@@ -107,6 +107,8 @@ public class LibretroDroid {
 
     public static native void step(GLRetroView retroView);
 
+    public static native void redraw();
+
     public static native void reset();
 
     public static native void setRumbleEnabled(boolean enabled);

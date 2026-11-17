@@ -525,6 +525,17 @@ JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_pause(
     }
 }
 
+JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_redraw(
+    JNIEnv* env,
+    jclass obj
+) {
+    try {
+        LibretroDroid::getInstance().redraw();
+    } catch (std::exception &exception) {
+        LOGE("Error in redraw: %s", exception.what());
+    }
+}
+
 JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_step(
     JNIEnv* env,
     jclass obj,
