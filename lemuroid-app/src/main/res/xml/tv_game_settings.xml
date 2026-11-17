@@ -48,6 +48,12 @@
         android:defaultValue="auto"
         app:icon="@drawable/ic_menu_image"/>
 
+    <Preference
+        android:key="pref_game_players"
+        android:title="Players"
+        android:summary="Change who's player 1 and 2, or switch a controller off"
+        app:icon="@drawable/ic_menu_controls"/>
+
     <PreferenceScreen
         android:key="pref_game_section_core_options"
         android:title="@string/game_menu_settings"

@@ -173,7 +173,47 @@ class InputDeviceManager(
             }
         }
 
+    /** A connected controller, and whether games use it. */
+    data class ConnectedPad(val device: InputDevice, val enabled: Boolean)
+
+    /** Every connected controller in player order, including the ones switched off. */
+    fun getConnectedPadsObservable(): Flow<List<ConnectedPad>> {
+        return getGamePadsObservable()
+            .flatMapLatest { devices ->
+                if (devices.isEmpty()) return@flatMapLatest flowOf(emptyList())
+                combine(devices.map { getDeviceStatus(it) }) { statuses -> statuses.map { ConnectedPad(it.device, it.enabled) } }
+            }
+    }
+
+    /** Whether games use this controller. One that's off takes no player number. */
+    fun setEnabled(
+        device: InputDevice,
+        enabled: Boolean,
+    ) {
+        sharedPreferences.edit { putBoolean(computeEnabledGamePadPreference(device), enabled) }
+    }
+
+    /**
+     * Saves the player order: the first controller in [devices] is player 1, and so on. Controllers that
+     * aren't connected right now keep their place after these.
+     */
+    fun setOrder(devices: List<InputDevice>) {
+        val now = devices.map { it.descriptor }.distinct()
+        val before = parseOrder(sharedPreferences.getString(GAME_PAD_ORDER_KEY, "") ?: "")
+        sharedPreferences.edit { putString(GAME_PAD_ORDER_KEY, (now + before.filter { it !in now }).take(40).joinToString("\n")) }
+    }
+
+    private fun parseOrder(value: String) = value.split('\n').filter { it.isNotBlank() }
+
+    /** Controllers in the order chosen under Settings → Players; ones never ordered follow in their usual order. */
     fun getGamePadsObservable(): Flow<List<InputDevice>> {
+        return combine(getRawGamePadsObservable(), flowSharedPreferences.getString(GAME_PAD_ORDER_KEY, "").asFlow()) { pads, order ->
+            val places = parseOrder(order).withIndex().associate { it.value to it.index }
+            pads.sortedBy { places[it.descriptor] ?: Int.MAX_VALUE }
+        }
+    }
+
+    private fun getRawGamePadsObservable(): Flow<List<InputDevice>> {
         val result = MutableStateFlow(getAllGamePads())
 
         val listener =
@@ -247,6 +287,7 @@ class InputDeviceManager(
     companion object {
         private const val GAME_PAD_BINDING_PREFERENCE_BASE_KEY = "pref_key_gamepad_binding_key"
         private const val GAME_PAD_ENABLED_PREFERENCE_BASE_KEY = "pref_key_gamepad_enabled"
+        private const val GAME_PAD_ORDER_KEY = "pref_key_gamepad_order"
 
         private val bindingsMapSerializer = MapSerializer(InputKey.serializer(), RetroKey.serializer())
         private val bindingsComboSerializer = PairSerializer(InputKey.serializer(), InputKey.serializer())

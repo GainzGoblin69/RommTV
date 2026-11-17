@@ -158,6 +158,10 @@ class TVGameMenuFragment(
     }
 
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
+        if (preference.key == "pref_game_players") {
+            startActivity(android.content.Intent(requireContext(), com.swordfish.lemuroid.app.tv.romm.GamePlayersActivity::class.java))
+            return true
+        }
         if (preference.key == JOHNNY) {
             val turnOn = !com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.isOn
             com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.setOn(requireContext(), turnOn)

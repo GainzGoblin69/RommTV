@@ -1065,6 +1065,9 @@ class BigPictureFragment : Fragment() {
                 ) {
                     startActivity(Intent(requireContext(), com.swordfish.lemuroid.app.tv.romm.RetroAchievementsActivity::class.java))
                 }
+                SettingTile("Players", "Who's player 1, 2, 3, 4, and which controllers are on") {
+                    startActivity(Intent(requireContext(), com.swordfish.lemuroid.app.tv.romm.PlayersActivity::class.java))
+                }
                 SettingTile("Controller buttons", "A button layout for each console") {
                     com.swordfish.lemuroid.app.tv.romm.ConsoleControlsActivity.open(
                         requireContext(),

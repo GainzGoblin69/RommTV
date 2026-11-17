@@ -155,6 +155,19 @@
             android:theme="@style/LemuroidLeanbackTheme" />
 
         <activity
+            android:name=".app.tv.romm.PlayersActivity"
+            android:screenOrientation="sensorLandscape"
+            android:exported="false"
+            android:theme="@style/LemuroidLeanbackTheme" />
+
+        <activity
+            android:name=".app.tv.romm.GamePlayersActivity"
+            android:process=":game"
+            android:screenOrientation="sensorLandscape"
+            android:exported="false"
+            android:theme="@style/LemuroidLeanbackTheme" />
+
+        <activity
             android:name=".app.tv.romm.ConsoleControlsActivity"
             android:screenOrientation="sensorLandscape"
             android:exported="false"
