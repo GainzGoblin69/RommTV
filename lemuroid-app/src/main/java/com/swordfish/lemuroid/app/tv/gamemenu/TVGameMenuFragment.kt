@@ -63,15 +63,16 @@ class TVGameMenuFragment(
 
         // The hidden extra, once unlocked: mutes the game and shuffles the big music folder instead
         if (com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.isUnlocked(requireContext())) {
-            preferenceScreen.addPreference(
+            val johnny =
                 androidx.preference.SwitchPreference(preferenceScreen.context).apply {
                     key = JOHNNY
                     title = "Johnny Music"
                     isPersistent = false
-                    isChecked = com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.isOn
                     setIcon(R.drawable.ic_menu_mute)
-                },
-            )
+                }
+            preferenceScreen.addPreference(johnny)
+            // Set after it's added: adding a switch resets it to off
+            johnny.isChecked = com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.isOn
         }
 
         if (numDisks > 1) {
