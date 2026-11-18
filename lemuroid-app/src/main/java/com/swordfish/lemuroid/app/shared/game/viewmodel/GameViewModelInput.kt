@@ -283,7 +283,8 @@ class GameViewModelInput(
     }
 
     private suspend fun initializeGamePadKeysFlow() {
-        val pressedKeys = mutableSetOf<Int>()
+        // Held buttons per controller, so two players' presses never add up to one player's shortcut
+        val pressedKeys = mutableMapOf<Int, MutableSet<Int>>()
 
         val filteredKeyEvents =
             keyEventsFlow
@@ -308,26 +309,36 @@ class GameViewModelInput(
                 val (device, action, keyCode) = event
                 val port = ports(device)
                 val bindKeyCode =
-                    consoleLayout?.get(keyCode)
-                        ?: bindings(device)[InputKey(keyCode)]?.keyCode
-                        ?: keyCode
+                    com.swordfish.lemuroid.app.shared.input.ButtonStyle.apply(
+                        appContext,
+                        device,
+                        consoleLayout?.get(keyCode)
+                            ?: bindings(device)[InputKey(keyCode)]?.keyCode
+                            ?: keyCode,
+                    )
 
-                if (port == 0) {
-                    if (bindKeyCode == KeyEvent.KEYCODE_BUTTON_MODE && action == KeyEvent.ACTION_DOWN) {
-                        sideEffects.showMenu(tilt, this)
-                        return@safeCollect
-                    }
+                // Any player's Home button opens the menu, and the menu then knows whose controller it was
+                if (port != null && bindKeyCode == KeyEvent.KEYCODE_BUTTON_MODE && action == KeyEvent.ACTION_DOWN) {
+                    com.swordfish.lemuroid.app.shared.input.ButtonStyle.menuOpener = device
+                    sideEffects.showMenu(tilt, this)
+                    return@safeCollect
+                }
 
+                if (port != null) {
+                    val held = pressedKeys.getOrPut(device?.id ?: -1) { mutableSetOf() }
                     if (action == KeyEvent.ACTION_DOWN) {
-                        pressedKeys.add(keyCode)
+                        held.add(keyCode)
                     } else if (action == KeyEvent.ACTION_UP) {
-                        pressedKeys.remove(keyCode)
+                        held.remove(keyCode)
                     }
 
                     shortcuts[device]?.forEach { shortcut ->
-                        if (shortcut.keys.isNotEmpty() && pressedKeys.containsAll(shortcut.keys)) {
+                        if (shortcut.keys.isNotEmpty() && held.containsAll(shortcut.keys)) {
                             when (shortcut.type) {
-                                GameShortcutType.MENU -> sideEffects.showMenu(tilt, this)
+                                GameShortcutType.MENU -> {
+                                    com.swordfish.lemuroid.app.shared.input.ButtonStyle.menuOpener = device
+                                    sideEffects.showMenu(tilt, this)
+                                }
                                 GameShortcutType.QUICK_LOAD -> sideEffects.loadQuickSave()
                                 GameShortcutType.QUICK_SAVE -> sideEffects.saveQuickSave()
                                 GameShortcutType.TOGGLE_FAST_FORWARD -> sideEffects.toggleFastForward()

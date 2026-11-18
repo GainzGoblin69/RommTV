@@ -61,6 +61,20 @@ class TVGameMenuFragment(
                 true
             }
 
+        // Xbox or Nintendo buttons for the controller that opened this menu (or player 1's, if a remote or touch did)
+        buttonStyleDevice()?.let { pad ->
+            val style =
+                androidx.preference.SwitchPreference(preferenceScreen.context).apply {
+                    key = BUTTON_STYLE
+                    title = "Nintendo buttons"
+                    summary = "${com.swordfish.lemuroid.app.tv.romm.friendlyName(pad)}: swaps A with B and X with Y"
+                    isPersistent = false
+                    setIcon(R.drawable.ic_menu_controls)
+                }
+            preferenceScreen.addPreference(style)
+            style.isChecked = com.swordfish.lemuroid.app.shared.input.ButtonStyle.isNintendo(requireContext(), pad)
+        }
+
         // The hidden extra, once unlocked: mutes the game and shuffles the big music folder instead
         if (com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.isUnlocked(requireContext())) {
             val johnny =
@@ -158,6 +172,12 @@ class TVGameMenuFragment(
     }
 
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
+        if (preference.key == BUTTON_STYLE) {
+            val pad = buttonStyleDevice() ?: return true
+            val on = (preference as androidx.preference.SwitchPreference).isChecked
+            com.swordfish.lemuroid.app.shared.input.ButtonStyle.setNintendo(requireContext(), pad, on)
+            return true
+        }
         if (preference.key == "pref_game_players") {
             startActivity(android.content.Intent(requireContext(), com.swordfish.lemuroid.app.tv.romm.GamePlayersActivity::class.java))
             return true
@@ -179,7 +199,16 @@ class TVGameMenuFragment(
         return super.onPreferenceTreeClick(preference)
     }
 
+    /** The controller whose buttons the switch changes: whoever opened the menu, else the first one connected. */
+    private fun buttonStyleDevice(): android.view.InputDevice? =
+        com.swordfish.lemuroid.app.shared.input.ButtonStyle.menuOpener
+            ?.let { android.view.InputDevice.getDevice(it.id) }
+            ?: android.view.InputDevice.getDeviceIds().toList()
+                .mapNotNull { android.view.InputDevice.getDevice(it) }
+                .firstOrNull { !it.isVirtual && (it.sources and android.view.InputDevice.SOURCE_GAMEPAD) == android.view.InputDevice.SOURCE_GAMEPAD }
+
     companion object {
+        private const val BUTTON_STYLE = "pref_game_button_style"
         private const val JOHNNY = "pref_game_johnny_music"
     }
 

@@ -455,6 +455,7 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         data: Intent?,
     ) {
         super.onActivityResult(requestCode, resultCode, data)
+        com.swordfish.lemuroid.app.shared.input.ButtonStyle.menuOpener = null
         if (requestCode == DIALOG_REQUEST) {
             Timber.i("Game menu dialog response: ${data?.extras.dump()}")
             if (data?.getBooleanExtra(GameMenuContract.RESULT_RESET, false) == true) {
