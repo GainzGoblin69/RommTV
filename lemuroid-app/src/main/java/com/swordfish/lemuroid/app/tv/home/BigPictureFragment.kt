@@ -551,7 +551,7 @@ class BigPictureFragment : Fragment() {
                         var size by remember(presence) { mutableStateOf(start) }
                         Text(
                             presence,
-                            color = TextColor,
+                            color = Lime,
                             fontSize = size.sp,
                             lineHeight = (size + 4f).sp,
                             fontWeight = FontWeight.Medium,
