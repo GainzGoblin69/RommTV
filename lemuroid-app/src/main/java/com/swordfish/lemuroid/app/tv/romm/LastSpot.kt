@@ -22,6 +22,27 @@ object LastSpot {
         return File(dir(context), "$key.jpg")
     }
 
+    private fun textFile(
+        context: Context,
+        game: Game,
+    ) = File(file(context, game).path.removeSuffix(".jpg") + ".txt")
+
+    /** What RetroAchievements said you were doing when you left off, or null if it said nothing. */
+    fun text(
+        context: Context,
+        game: Game,
+    ): String? = textFile(context, game).takeIf { it.exists() }?.readText()?.trim()?.ifBlank { null }
+
+    /** Saves (or, when blank, forgets) what RetroAchievements says you're doing. */
+    fun saveText(
+        context: Context,
+        game: Game,
+        text: String,
+    ) {
+        val f = textFile(context, game)
+        if (text.isBlank()) f.delete() else f.writeText(text.trim())
+    }
+
     fun save(
         context: Context,
         game: Game,

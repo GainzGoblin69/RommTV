@@ -78,6 +78,12 @@ object RetroAchievements {
         nativeStop()
     }
 
+    /** What RetroAchievements shows for the game right now (e.g. "Level 3, 2 lives"), or "" if nothing. */
+    fun richPresence(): String = runCatching { nativeRichPresence() }.getOrDefault("")
+
+    @JvmStatic
+    private external fun nativeRichPresence(): String
+
     @JvmStatic
     private external fun nativeStart(
         userAgent: String,

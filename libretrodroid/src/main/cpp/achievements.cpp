@@ -207,6 +207,15 @@ void Achievements::doFrame(Core* core) {
     }
 }
 
+std::string Achievements::richPresence() {
+    std::lock_guard<std::recursive_mutex> guard(lock);
+    if (client == nullptr || !rc_client_is_game_loaded(client) || !rc_client_has_rich_presence(client)) return "";
+    char buffer[512];
+    size_t length = rc_client_get_rich_presence_message(client, buffer, sizeof(buffer));
+    if (length == 0) return "";
+    return std::string(buffer, length < sizeof(buffer) ? length : sizeof(buffer) - 1);
+}
+
 void Achievements::idle() {
     std::lock_guard<std::recursive_mutex> guard(lock);
     if (client != nullptr) rc_client_idle(client);
@@ -387,6 +396,10 @@ JNIEXPORT jstring JNICALL Java_com_swordfish_libretrodroid_RetroAchievements_nat
     self.start(env, libretrodroid::fromJava(env, userAgent), libretrodroid::fromJava(env, username),
                libretrodroid::fromJava(env, token), consoleId, libretrodroid::fromJava(env, gamePath));
     return env->NewStringUTF(self.userAgentClause().c_str());
+}
+
+JNIEXPORT jstring JNICALL Java_com_swordfish_libretrodroid_RetroAchievements_nativeRichPresence(JNIEnv* env, jclass) {
+    return env->NewStringUTF(Achievements::getInstance().richPresence().c_str());
 }
 
 JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_RetroAchievements_nativeStop(JNIEnv*, jclass) {

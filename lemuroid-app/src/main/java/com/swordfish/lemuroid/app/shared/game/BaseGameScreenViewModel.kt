@@ -65,9 +65,15 @@ class BaseGameScreenViewModel(
         val target = game ?: lastGame ?: return
         lastGame = target
         val view = retroGameView.retroGameView ?: return
-        val shot = kotlinx.coroutines.withTimeoutOrNull(3_000) { view.takeScreenshot(640, 2) } ?: return
+        // Blank when you're not signed in to RetroAchievements or the game has nothing to say
+        val presence =
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.swordfish.libretrodroid.RetroAchievements.richPresence()
+            }
+        val shot = kotlinx.coroutines.withTimeoutOrNull(3_000) { view.takeScreenshot(640, 2) }
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching { com.swordfish.lemuroid.app.tv.romm.LastSpot.save(appContext, target, shot) }
+            runCatching { com.swordfish.lemuroid.app.tv.romm.LastSpot.saveText(appContext, target, presence) }
+            if (shot != null) runCatching { com.swordfish.lemuroid.app.tv.romm.LastSpot.save(appContext, target, shot) }
         }
     }
 

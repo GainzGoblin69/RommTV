@@ -541,18 +541,25 @@ class BigPictureFragment : Fragment() {
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.weight(1f))
-                    Text(
-                        if (spot != null) {
-                            "Picks up where you left off"
-                        } else if (isInstalled(game)) {
-                            "Downloaded and ready to play"
-                        } else {
-                            "Downloads when you play"
-                        },
-                        color = if (spot != null || isInstalled(game)) Lime else Quiet,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    // Where you are, as RetroAchievements describes it; smaller letters for a longer description
+                    val presence =
+                        remember(game.fileUri, resumeCount) {
+                            com.swordfish.lemuroid.app.tv.romm.LastSpot.text(requireContext(), game)
+                        }
+                    if (presence != null) {
+                        val start = if (presence.length <= 60) 16f else if (presence.length <= 110) 14f else 12f
+                        var size by remember(presence) { mutableStateOf(start) }
+                        Text(
+                            presence,
+                            color = TextColor,
+                            fontSize = size.sp,
+                            lineHeight = (size + 4f).sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { if (it.hasVisualOverflow && size > 10f) size -= 1f },
+                        )
+                    }
                 }
                 }
             }
