@@ -400,31 +400,48 @@ class BigPictureFragment : Fragment() {
                 }
             val larry = androidx.compose.ui.res.painterResource(R.mipmap.lemuroid_launcher_round)
             if (ra != null) {
-                coil.compose.AsyncImage(
-                    model = "https://media.retroachievements.org/UserPic/${android.net.Uri.encode(ra.username)}.png",
-                    contentDescription = null,
-                    placeholder = larry,
-                    error = larry,
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    modifier = Modifier.size(34.dp).clip(CircleShape).border(2.dp, Lime, CircleShape),
-                )
+                // Signed in: your picture and name open your RetroAchievements profile
+                var profileFocused by remember { mutableStateOf(false) }
+                Row(
+                    Modifier
+                        .focusSound()
+                        .onFocusChanged { profileFocused = it.isFocused }
+                        .border(2.dp, if (profileFocused) Lime else Color.Transparent, RoundedCornerShape(24.dp))
+                        .clip(RoundedCornerShape(24.dp))
+                        .tapClickable {
+                            startActivity(Intent(requireContext(), com.swordfish.lemuroid.app.tv.romm.RaProfileActivity::class.java))
+                        }
+                        .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    coil.compose.AsyncImage(
+                        model = "https://media.retroachievements.org/UserPic/${android.net.Uri.encode(ra.username)}.png",
+                        contentDescription = "Your RetroAchievements profile",
+                        placeholder = larry,
+                        error = larry,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.size(34.dp).clip(CircleShape).border(2.dp, Lime, CircleShape),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        ra.username,
+                        color = TextColor,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 170.dp),
+                    )
+                }
             } else {
                 androidx.compose.foundation.Image(
                     painter = larry,
                     contentDescription = null,
                     modifier = Modifier.size(34.dp).clip(CircleShape),
                 )
+                Spacer(Modifier.width(4.dp))
+                Text("RomM TV", color = TextColor, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             }
-            Spacer(Modifier.width(4.dp))
-            Text(
-                ra?.username ?: "RomM TV",
-                color = TextColor,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 170.dp),
-            )
             Spacer(Modifier.width(22.dp))
             Tab.values().filter { it != Tab.SEARCH }.forEach { t ->
                 TabButton(t.label, selected = tab == t, modifier = Modifier.focusRequester(tabFocus.getValue(t))) { go(t) }
