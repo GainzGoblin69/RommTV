@@ -428,10 +428,11 @@ class BigPictureFragment : Fragment() {
             Tab.values().filter { it != Tab.SEARCH }.forEach { t ->
                 TabButton(t.label, selected = tab == t, modifier = Modifier.focusRequester(tabFocus.getValue(t))) { go(t) }
             }
+            TabButton("Search", selected = tab == Tab.SEARCH, modifier = Modifier.focusRequester(tabFocus.getValue(Tab.SEARCH))) { go(Tab.SEARCH) }
             // The music line gets whatever room is left, at a fixed height, so a long song name never
             // squeezes Search or pushes the page down; names that don't fit scroll instead
             Row(
-                Modifier.weight(1f).height(52.dp).padding(start = 14.dp, end = 10.dp),
+                Modifier.weight(1f).height(52.dp).padding(start = 14.dp),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -441,7 +442,6 @@ class BigPictureFragment : Fragment() {
                 }
                 com.swordfish.lemuroid.app.tv.romm.NowPlayingChip(Modifier.weight(1f, fill = false))
             }
-            TabButton("Search", selected = tab == Tab.SEARCH, modifier = Modifier.focusRequester(tabFocus.getValue(Tab.SEARCH))) { go(Tab.SEARCH) }
         }
     }
 
