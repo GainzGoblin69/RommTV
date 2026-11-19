@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -391,14 +392,38 @@ class BigPictureFragment : Fragment() {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Larry's orb, the same as in the start-up splash and the app icon
-            androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(R.mipmap.lemuroid_launcher_round),
-                contentDescription = null,
-                modifier = Modifier.size(34.dp).clip(CircleShape),
-            )
+            // Signed in to RetroAchievements: your RetroAchievements picture and name. Otherwise Larry and "RomM TV"
+            val ra =
+                remember(resumeCount) {
+                    com.swordfish.lemuroid.app.tv.romm.RetroAchievementsAccount.load(requireContext())
+                }
+            val larry = androidx.compose.ui.res.painterResource(R.mipmap.lemuroid_launcher_round)
+            if (ra != null) {
+                coil.compose.AsyncImage(
+                    model = "https://media.retroachievements.org/UserPic/${android.net.Uri.encode(ra.username)}.png",
+                    contentDescription = null,
+                    placeholder = larry,
+                    error = larry,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.size(34.dp).clip(CircleShape).border(2.dp, Lime, CircleShape),
+                )
+            } else {
+                androidx.compose.foundation.Image(
+                    painter = larry,
+                    contentDescription = null,
+                    modifier = Modifier.size(34.dp).clip(CircleShape),
+                )
+            }
             Spacer(Modifier.width(4.dp))
-            Text("RomM TV", color = TextColor, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text(
+                ra?.username ?: "RomM TV",
+                color = TextColor,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 170.dp),
+            )
             Spacer(Modifier.width(22.dp))
             Tab.values().filter { it != Tab.SEARCH }.forEach { t ->
                 TabButton(t.label, selected = tab == t, modifier = Modifier.focusRequester(tabFocus.getValue(t))) { go(t) }
