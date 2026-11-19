@@ -184,6 +184,8 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         if (baseGameScreenViewModel.loadingState.value) {
             return
         }
+        // The menu is how a game is closed, so this picture is the spot it resumes from
+        lifecycleScope.launch { baseGameScreenViewModel.captureLastSpot() }
 
         val coreOptions = getCoreOptions()
 

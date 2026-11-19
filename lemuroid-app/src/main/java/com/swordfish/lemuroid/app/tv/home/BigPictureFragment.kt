@@ -492,6 +492,34 @@ class BigPictureFragment : Fragment() {
         ) {
             Row(Modifier.fillMaxSize()) {
                 Cover(game, Modifier.width(150.dp).height(TILE_COVER_HEIGHT + TILE_INFO_HEIGHT))
+                // Behind the words: a picture of where you left off, dimmed so the words stay easy to read
+                val spot =
+                    remember(game.fileUri, resumeCount) {
+                        com.swordfish.lemuroid.app.tv.romm.LastSpot.file(requireContext(), game).takeIf { it.exists() }
+                    }
+                Box(Modifier.fillMaxSize()) {
+                    if (spot != null) {
+                        coil.compose.AsyncImage(
+                            model =
+                                coil.request.ImageRequest.Builder(requireContext())
+                                    .data(spot)
+                                    .memoryCacheKey(spot.path + spot.lastModified())
+                                    .diskCachePolicy(coil.request.CachePolicy.DISABLED)
+                                    .build(),
+                            contentDescription = null,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(
+                                    0f to Panel.copy(alpha = 0.82f),
+                                    0.55f to Panel.copy(alpha = 0.55f),
+                                    1f to Panel.copy(alpha = 0.85f),
+                                ),
+                            ),
+                        )
+                    }
                 Column(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -514,10 +542,18 @@ class BigPictureFragment : Fragment() {
                     )
                     Spacer(Modifier.weight(1f))
                     Text(
-                        if (isInstalled(game)) "Downloaded and ready to play" else "Downloads when you play",
-                        color = if (isInstalled(game)) Lime else Quiet,
+                        if (spot != null) {
+                            "Picks up where you left off"
+                        } else if (isInstalled(game)) {
+                            "Downloaded and ready to play"
+                        } else {
+                            "Downloads when you play"
+                        },
+                        color = if (spot != null || isInstalled(game)) Lime else Quiet,
                         fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
                     )
+                }
                 }
             }
         }

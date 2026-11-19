@@ -42,6 +42,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import com.swordfish.lemuroid.common.graphics.takeScreenshot
 import timber.log.Timber
 
 class BaseGameScreenViewModel(
@@ -59,6 +60,19 @@ class BaseGameScreenViewModel(
     coreVariablesManager: CoreVariablesManager,
     rumbleManager: RumbleManager,
 ) : ViewModel(), DefaultLifecycleObserver {
+    /** Saves a picture of the game as it is now (see [com.swordfish.lemuroid.app.tv.romm.LastSpot]). */
+    suspend fun captureLastSpot(game: com.swordfish.lemuroid.lib.library.db.entity.Game? = null) {
+        val target = game ?: lastGame ?: return
+        lastGame = target
+        val view = retroGameView.retroGameView ?: return
+        val shot = kotlinx.coroutines.withTimeoutOrNull(3_000) { view.takeScreenshot(640, 2) } ?: return
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { com.swordfish.lemuroid.app.tv.romm.LastSpot.save(appContext, target, shot) }
+        }
+    }
+
+    private var lastGame: com.swordfish.lemuroid.lib.library.db.entity.Game? = null
+
     class Factory(
         private val appContext: Context,
         private val game: Game,
@@ -185,6 +199,15 @@ class BaseGameScreenViewModel(
         viewModelScope.launch {
             gameData.quickSaveData?.let {
                 saves.restoreAutoSaveAsync(it)
+            }
+        }
+        viewModelScope.launch {
+            // A picture of the spot you're at, for the Continue playing card: every 30 seconds while playing
+            retroGameView.waitGLEvent<com.swordfish.libretrodroid.GLRetroView.GLRetroEvents.FrameRendered>()
+            kotlinx.coroutines.delay(5_000)
+            while (true) {
+                captureLastSpot(gameData.game)
+                kotlinx.coroutines.delay(30_000)
             }
         }
         viewModelScope.launch {
