@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -1121,92 +1122,203 @@ class BigPictureFragment : Fragment() {
 
     // ---- Settings
 
+    /** One entry on the Settings tab: its name, how it's set now, and a longer word on what it's for. */
+    private class SettingItem(
+        val title: String,
+        val status: String,
+        val about: String,
+        val modifier: Modifier = Modifier,
+        val onClick: () -> Unit,
+    )
+
+    private fun settingItems(): List<SettingItem> {
+        val context = requireContext()
+        val word = com.swordfish.lemuroid.lib.romm.Device.word
+        val ra = com.swordfish.lemuroid.app.tv.romm.RetroAchievementsAccount.load(context)?.takeIf { resumeCount >= 0 }
+        val musicSet = com.swordfish.lemuroid.app.tv.romm.MenuMusic.isConfigured(context) && resumeCount >= 0
+        val items =
+            mutableListOf(
+                SettingItem(
+                    "Sync library",
+                    if (home.indexInProgress) "Syncing now…" else syncSummary(),
+                    "Fetches your game list from RomM so new games, covers and details show up here. " +
+                        "It also runs on its own in the background; use this after adding games to RomM.",
+                ) {
+                    LibraryIndexScheduler.scheduleLibrarySync(context.applicationContext)
+                    Toast.makeText(context, "Syncing your library with RomM…", Toast.LENGTH_SHORT).show()
+                },
+                SettingItem(
+                    "RomM account",
+                    rommUser?.let { "Signed in as $it" } ?: "Not signed in",
+                    (rommUser?.let { "Saves are shared with every device signed in as $it. " } ?: "") +
+                        "Checks the connection to your RomM server, and lets you sign in again or as someone else.",
+                ) { showRommStatus() },
+                SettingItem(
+                    "Download location",
+                    "This $word or a USB drive",
+                    "Where downloaded games are kept. A USB drive gives a $word with little space room for many more games.",
+                ) { showDownloadLocation() },
+                SettingItem(
+                    "RetroAchievements",
+                    ra?.let { if (it.enabled) "Earning as ${it.username}" else "Off (signed in as ${it.username})" } ?: "Not signed in",
+                    "Earn RetroAchievements while you play. Unlocks pop up in the game, and your name and picture show at the " +
+                        "top of the screen. Achievements pause for a game while cheats are on.",
+                ) {
+                    startActivity(Intent(context, com.swordfish.lemuroid.app.tv.romm.RetroAchievementsActivity::class.java))
+                },
+                SettingItem(
+                    "Players",
+                    "Who's player 1, 2, 3, 4",
+                    "Put your controllers in player order, or switch one off so games ignore it. Also in the game menu while you play.",
+                ) {
+                    startActivity(Intent(context, com.swordfish.lemuroid.app.tv.romm.PlayersActivity::class.java))
+                },
+                SettingItem(
+                    "Controller buttons",
+                    "A layout for each console",
+                    "Choose which controller button does what for each console, for example to match a SNES pad's layout.",
+                ) {
+                    com.swordfish.lemuroid.app.tv.romm.ConsoleControlsActivity.open(context, home.metaSystems.flatMap { it.metaSystem.systemIDs })
+                },
+                SettingItem(
+                    "Emulator settings",
+                    "Controllers, display, cores and saves",
+                    "The emulator's own settings: screen filter, auto-save, which emulator each console uses, controller shortcuts and more.",
+                ) {
+                    startActivity(Intent(context, TVSettingsActivity::class.java))
+                },
+                SettingItem(
+                    "Menu music",
+                    if (musicSet) {
+                        if (com.swordfish.lemuroid.app.tv.romm.MenuMusic.settings(context).enabled) "Shuffling your music folder" else "Off"
+                    } else {
+                        "Not set up"
+                    },
+                    "Shuffles songs from your music folder on the server while you browse, with a slideshow of game pictures " +
+                        "when the app sits idle. Set the folder, volume and slideshow delay here.",
+                    // Holding Select here for 3 seconds opens the hidden Johnny Music set-up
+                    modifier = Modifier.onFocusChanged { menuMusicFocused = it.isFocused },
+                ) {
+                    startActivity(Intent(context, com.swordfish.lemuroid.app.tv.romm.MenuMusicActivity::class.java))
+                },
+                SettingItem(
+                    "Menu sounds",
+                    if (menuSounds) "On" else "Off",
+                    "Soft ticks and clicks as you move around the menus. Press to switch on or off.",
+                ) {
+                    menuSounds = !menuSounds
+                    UiSounds.setEnabled(context, menuSounds)
+                },
+                SettingItem(
+                    "Check for updates",
+                    "Build ${com.swordfish.lemuroid.BuildConfig.VERSION_CODE} installed",
+                    "Looks for a newer build of the app and installs it.",
+                ) {
+                    Toast.makeText(context, "Checking for a newer build…", Toast.LENGTH_SHORT).show()
+                    AppUpdater.checkInBackground(requireActivity(), viewLifecycleOwner.lifecycleScope)
+                },
+            )
+        if (!com.swordfish.lemuroid.lib.romm.Device.isTv(context)) {
+            items +=
+                SettingItem(
+                    "Touch controls vibration",
+                    when (touchVibration) {
+                        "none" -> "Off"
+                        "press_release" -> "Press and release"
+                        else -> "On press"
+                    },
+                    "Tap to change. The on-screen buttons hide while a controller is connected.",
+                ) {
+                    touchVibration =
+                        when (touchVibration) {
+                            "press" -> "press_release"
+                            "press_release" -> "none"
+                            else -> "press"
+                        }
+                    emulatorPrefs().edit().putString(getString(R.string.pref_key_haptic_feedback_mode), touchVibration).apply()
+                }
+        }
+        return items
+    }
+
     @Composable
     private fun Settings() {
+        val items = settingItems()
+        if (com.swordfish.lemuroid.lib.romm.Device.isTv(requireContext())) {
+            SettingsList(items)
+            return
+        }
+        // Phones: tiles, three to a row
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 48.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SettingTile("Sync library", if (home.indexInProgress) "Syncing now…" else syncSummary()) {
-                    LibraryIndexScheduler.scheduleLibrarySync(requireContext().applicationContext)
-                    Toast.makeText(requireContext(), "Syncing your library with RomM…", Toast.LENGTH_SHORT).show()
-                }
-                SettingTile(
-                    "RomM account",
-                    rommUser?.let { "Signed in as $it · saves are shared with every device signed in as $it" }
-                        ?: "Connection check and sign in",
-                ) { showRommStatus() }
-                SettingTile("Download location", "This ${com.swordfish.lemuroid.lib.romm.Device.word} or a USB drive") { showDownloadLocation() }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SettingTile(
-                    "RetroAchievements",
-                    com.swordfish.lemuroid.app.tv.romm.RetroAchievementsAccount.load(requireContext())?.takeIf { resumeCount >= 0 }?.let {
-                        if (it.enabled) "Earning as ${it.username}" else "Off (signed in as ${it.username})"
-                    } ?: "Sign in to earn achievements while you play",
-                ) {
-                    startActivity(Intent(requireContext(), com.swordfish.lemuroid.app.tv.romm.RetroAchievementsActivity::class.java))
-                }
-                SettingTile("Players", "Who's player 1, 2, 3, 4, and which controllers are on") {
-                    startActivity(Intent(requireContext(), com.swordfish.lemuroid.app.tv.romm.PlayersActivity::class.java))
-                }
-                SettingTile("Controller buttons", "A button layout for each console") {
-                    com.swordfish.lemuroid.app.tv.romm.ConsoleControlsActivity.open(
-                        requireContext(),
-                        home.metaSystems.flatMap { it.metaSystem.systemIDs },
-                    )
-                }
-                SettingTile("Emulator settings", "Controllers, display, cores and saves") {
-                    startActivity(Intent(requireContext(), TVSettingsActivity::class.java))
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SettingTile(
-                    "Menu music",
-                    if (com.swordfish.lemuroid.app.tv.romm.MenuMusic.isConfigured(requireContext()) && resumeCount >= 0) {
-                        if (com.swordfish.lemuroid.app.tv.romm.MenuMusic.settings(requireContext()).enabled) "Shuffling your music folder" else "Off"
-                    } else {
-                        "Shuffle songs from your music folder, plus the idle slideshow"
-                    },
-                    // Holding Select here for 3 seconds opens the hidden Johnny Music set-up
-                    modifier = Modifier.onFocusChanged { menuMusicFocused = it.isFocused },
-                ) {
-                    startActivity(Intent(requireContext(), com.swordfish.lemuroid.app.tv.romm.MenuMusicActivity::class.java))
-                }
-                SettingTile(
-                    "Menu sounds: " + if (menuSounds) "On" else "Off",
-                    "Soft ticks and clicks as you move around",
-                ) {
-                    menuSounds = !menuSounds
-                    UiSounds.setEnabled(requireContext(), menuSounds)
-                }
-                SettingTile("Check for updates", "Build ${com.swordfish.lemuroid.BuildConfig.VERSION_CODE} installed") {
-                    Toast.makeText(requireContext(), "Checking for a newer build…", Toast.LENGTH_SHORT).show()
-                    AppUpdater.checkInBackground(requireActivity(), viewLifecycleOwner.lifecycleScope)
-                }
-            }
-            if (!com.swordfish.lemuroid.lib.romm.Device.isTv(requireContext())) {
+            items.chunked(3).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SettingTile(
-                        "Touch controls vibration: " +
-                            when (touchVibration) {
-                                "none" -> "Off"
-                                "press_release" -> "Press and release"
-                                else -> "On press"
-                            },
-                        "Tap to change. The on-screen buttons hide while a controller is connected.",
-                    ) {
-                        touchVibration =
-                            when (touchVibration) {
-                                "press" -> "press_release"
-                                "press_release" -> "none"
-                                else -> "press"
-                            }
-                        emulatorPrefs().edit().putString(getString(R.string.pref_key_haptic_feedback_mode), touchVibration).apply()
-                    }
-                    Spacer(Modifier.weight(2f))
+                    row.forEach { SettingTile(it.title, it.status, it.modifier, it.onClick) }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
+            }
+        }
+    }
+
+    /** TVs: a list on the left; the highlighted entry is explained on the right. Press to open it. */
+    @Composable
+    private fun SettingsList(items: List<SettingItem>) {
+        var selected by remember { mutableStateOf(0) }
+        val shown = items.getOrNull(selected) ?: items.first()
+        Row(
+            Modifier.fillMaxSize().padding(start = 48.dp, end = 48.dp, top = 10.dp, bottom = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(28.dp),
+        ) {
+            Column(
+                Modifier.width(360.dp).fillMaxHeight().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items.forEachIndexed { index, item ->
+                    FocusBox(
+                        Modifier.fillMaxWidth().height(54.dp).then(item.modifier),
+                        onFocused = { selected = index },
+                        onClick = item.onClick,
+                    ) {
+                        Row(
+                            Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                item.title,
+                                color = TextColor,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                item.status,
+                                color = Quiet,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 150.dp).padding(start = 8.dp),
+                            )
+                        }
+                    }
+                }
+            }
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Panel.copy(alpha = 0.82f))
+                    .border(1.dp, Line, RoundedCornerShape(14.dp))
+                    .padding(28.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(shown.title, color = TextColor, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text(shown.status, color = Lime, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp)
+                Text(shown.about, color = Quiet, fontSize = 15.sp, lineHeight = 22.sp)
+                Spacer(Modifier.weight(1f))
+                Text("Press to open", color = Quiet, fontSize = 12.sp)
             }
         }
     }
