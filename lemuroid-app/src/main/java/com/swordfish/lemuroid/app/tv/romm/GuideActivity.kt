@@ -103,7 +103,8 @@ class GuideActivity : Activity() {
                         ) {
                             view.evaluateJavascript(READER_JS, null)
                             if (isGuide(url)) Guides.remember(this@GuideActivity, gameKey, url)
-                            pendingScroll?.takeIf { it.first == url }?.let { (_, y) -> view.postDelayed({ view.scrollTo(0, y) }, 400) }
+                            // After the reader layout settles, go back to where you were
+                            pendingScroll?.takeIf { it.first == url }?.let { (_, y) -> view.postDelayed({ view.scrollTo(0, y) }, 600) }
                             pendingScroll = null
                         }
                     }
@@ -121,7 +122,7 @@ class GuideActivity : Activity() {
         if (saved != null) {
             pendingScroll = saved.url to saved.scroll
             web.loadUrl(saved.url)
-            status.text = if (suggestions.isEmpty()) "Your guide for this game" else "Press Y to jump to where you are"
+            status.text = if (suggestions.isEmpty()) "Back where you left off" else "Back where you left off · Y jumps to where you are"
         } else {
             openSearch()
         }
@@ -130,7 +131,12 @@ class GuideActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
-        web.url?.takeIf { isGuide(it) }?.let { Guides.remember(this, gameKey, it, web.scrollY) }
+        val url = web.url?.takeIf { isGuide(it) } ?: return
+        // Next time the guide opens right here, unless you ask to jump somewhere else
+        Guides.remember(this, gameKey, url, web.scrollY)
+        // Where you ended up reading after a jump is the right spot for this place in the game: remember it
+        val key = locationKey
+        if (jumped && key != null) Guides.learn(this, gameKey, guideId(url), key, url, web.scrollY)
     }
 
     private fun openSearch() {
@@ -140,36 +146,59 @@ class GuideActivity : Activity() {
 
     private fun isGuide(url: String) = Regex("gamefaqs\\.gamespot\\.com/.+/faqs/\\d+").containsMatchIn(url)
 
-    /** Tries the place names from RetroAchievements one by one until the guide has one of them. */
+    /** The place RetroAchievements says you're at, as one key for remembering spots ("kremwood forest"). */
+    private val locationKey get() = suggestions.firstOrNull()?.lowercase()?.replace(Regex("\\s+"), " ")
+
+    /**
+     * Suggested spot: where you were reading the last time you were at this place in the game (learned), or
+     * else the guide section that best matches where RetroAchievements says you are.
+     */
     private fun jumpToSuggestion() {
         if (suggestions.isEmpty()) {
             status.text = "RetroAchievements isn't saying where you are in this game"
             return
         }
-        if (web.url?.let { isGuide(it) } != true) {
+        val url = web.url
+        if (url == null || !isGuide(url)) {
             status.text = "Open a guide first, then jump to your spot"
             return
         }
-        tryFind(0)
-    }
-
-    private fun tryFind(index: Int) {
-        val phrase = suggestions.getOrNull(index)
-        if (phrase == null) {
-            status.text = "This guide doesn't mention “${suggestions.first()}”"
+        val learned = locationKey?.let { Guides.spot(this, gameKey, guideId(url), it) }
+        if (learned != null) {
+            status.text = "Your spot for “${suggestions.first()}”"
+            if (learned.url == url) {
+                web.scrollTo(0, learned.scroll)
+            } else {
+                pendingScroll = learned.url to learned.scroll
+                web.loadUrl(learned.url)
+            }
+            jumped = true
             return
         }
-        web.setFindListener { active, count, done ->
-            if (!done) return@setFindListener
-            if (count == 0) {
-                tryFind(index + 1)
-            } else {
-                status.text = "“$phrase”: match ${active + 1} of $count"
-                nextButton.visibility = if (count > 1) View.VISIBLE else View.GONE
-            }
+        status.text = "Looking for “${suggestions.first()}”…"
+        val candidates = org.json.JSONArray(suggestions).toString()
+        web.evaluateJavascript("($LOCATE_JS)($candidates)") { raw ->
+            val result =
+                runCatching {
+                    JSONObject(org.json.JSONTokener(raw).nextValue() as String)
+                }.getOrNull()
+            val how = result?.optString("how")
+            val label = result?.optString("label").orEmpty()
+            status.text =
+                when (how) {
+                    "section" -> "Section: $label"
+                    "phrase", "word" -> "Mentions “$label”"
+                    else -> "This page doesn't mention “${suggestions.first()}”. Find your spot and it'll be remembered."
+                }
+            jumped = true
         }
-        web.findAllAsync(phrase)
     }
+
+    /** Whether you used Suggested spot this time (then where you finish reading is remembered for this place). */
+    private var jumped = false
+
+    /** Guides with several pages share one id, so a learned spot works on any of its pages. */
+    private fun guideId(url: String) = Regex("/faqs/(\\d+)").find(url)?.groupValues?.get(1) ?: url
 
     private fun askFind() {
         val input = EditText(this).apply { inputType = InputType.TYPE_CLASS_TEXT; hint = "Text to find" }
@@ -278,15 +307,47 @@ class GuideActivity : Activity() {
                 Saved(o.getString("url"), o.optInt("scroll"))
             }.getOrNull()
 
+        private fun read(
+            context: Context,
+            key: String,
+        ) = runCatching { JSONObject(file(context, key).readText()) }.getOrDefault(JSONObject())
+
         fun remember(
             context: Context,
             key: String,
             url: String,
             scroll: Int? = null,
         ) {
-            val previous = saved(context, key)
-            val y = scroll ?: if (previous?.url == url) previous.scroll else 0
-            runCatching { file(context, key).writeText(JSONObject().put("url", url).put("scroll", y).toString()) }
+            val o = read(context, key)
+            val y = scroll ?: if (o.optString("url") == url) o.optInt("scroll") else 0
+            o.put("url", url).put("scroll", y)
+            runCatching { file(context, key).writeText(o.toString()) }
+        }
+
+        /** A spot you read at for one place in the game ("kremwood forest"), per guide. */
+        fun spot(
+            context: Context,
+            key: String,
+            guide: String,
+            place: String,
+        ): Saved? =
+            read(context, key).optJSONObject("spots")?.optJSONObject("$guide|$place")?.let {
+                Saved(it.getString("url"), it.optInt("scroll"))
+            }
+
+        fun learn(
+            context: Context,
+            key: String,
+            guide: String,
+            place: String,
+            url: String,
+            scroll: Int,
+        ) {
+            val o = read(context, key)
+            val spots = o.optJSONObject("spots") ?: JSONObject()
+            spots.put("$guide|$place", JSONObject().put("url", url).put("scroll", scroll))
+            o.put("spots", spots)
+            runCatching { file(context, key).writeText(o.toString()) }
         }
     }
 
@@ -332,6 +393,110 @@ class GuideActivity : Activity() {
             Regex("\\b([A-Z][\\p{L}'’]{4,})").findAll(head).forEach { add(it.groupValues[1]) }
             return found.toList()
         }
+
+        /** Finds where you are on the guide page: best-matching section, then the name anywhere, then its rarest word. */
+        private const val LOCATE_JS = """
+function(cands){
+  function norm(t){
+    return (t||'').toLowerCase()
+      .replace(/[‐-―−]/g,'-')
+      .replace(/(\d)\s*-\s*(\d)/g,'$1x$2')
+      .replace(/[^a-z0-9À-ɏ ]+/g,' ')
+      .replace(/\s+/g,' ').trim();
+  }
+  var STOP = {the:1,of:1,in:1,at:1,a:1,an:1,and:1,to:1,on:1,is:1,'for':1,with:1,from:1};
+  function toks(t){ return norm(t).split(' ').filter(function(w){ return w && !STOP[w]; }); }
+  var root = document.querySelector('#faqwrap') || document.querySelector('#faqtext') || document.body;
+  var lines = [];
+  var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  var n, pos = 0;
+  while ((n = walker.nextNode())) {
+    var p = n.parentElement;
+    if (!p || (p.offsetParent === null && p !== document.body)) continue;
+    var text = n.nodeValue, start = 0;
+    var parts = text.split('\n');
+    for (var i = 0; i < parts.length; i++) {
+      var raw = parts[i];
+      if (raw.trim().length) lines.push({node:n, offset:start, text:raw.trim(), pos:pos + start, tag:p.tagName});
+      start += raw.length + 1;
+    }
+    pos += text.length;
+  }
+  if (!lines.length) return JSON.stringify({how:'none'});
+  var total = pos || 1;
+  var docNorm = lines.map(function(l){ return norm(l.text); }).join(' | ');
+  function count(w){ var c = 0, i = 0; while ((i = docNorm.indexOf(w, i)) >= 0 && c < 60) { c++; i += w.length; } return c; }
+  function isRule(t){ return /^[=\-*_#~+]{4,}\s*$/.test(t); }
+  var heads = [];
+  for (var k = 0; k < lines.length; k++) {
+    var l = lines[k], t = l.text;
+    if (t.length < 3 || t.length > 90 || isRule(t)) continue;
+    var letters = t.replace(/[^A-Za-z]/g,''), upper = t.replace(/[^A-Z]/g,'');
+    var h = /^H[1-6]$/.test(l.tag) ||
+      (letters.length >= 3 && upper.length / letters.length >= 0.7) ||
+      (t.length <= 60 && k + 1 < lines.length && isRule(lines[k+1].text)) ||
+      /^\s*(\[?[a-z]{0,3}\d+[\.\)\]:]|[ivx]+\.|(chapter|stage|level|world|area|zone|part|act|mission|walkthrough)\b)/i.test(t);
+    if (h) heads.push({line:l, idx:k, toks:toks(t), n:norm(t)});
+  }
+  var weights = {};
+  function weight(w){
+    if (weights[w] === undefined) {
+      var c = count(w);
+      weights[w] = c === 0 ? 0 : (/^[0-9x]+$/.test(w) ? 0.6 : 1) * (1 / (1 + c / 8));
+    }
+    return weights[w];
+  }
+  var best = null;
+  for (var hi = 0; hi < heads.length; hi++) {
+    var hd = heads[hi], score = 0;
+    for (var ci = 0; ci < cands.length; ci++) {
+      var ct = toks(cands[ci]), cp = norm(cands[ci]), s = 0, hits = 0;
+      for (var ti = 0; ti < ct.length; ti++) if (hd.toks.indexOf(ct[ti]) >= 0) { s += weight(ct[ti]); hits++; }
+      if (ct.length && hits === ct.length) s += 1.5;
+      if (cp.length >= 4 && hd.n.indexOf(cp) >= 0) s += 2;
+      s *= (ci === 0 ? 1 : 0.8);
+      if (s > score) score = s;
+    }
+    if (score <= 0) continue;
+    // A line in a list of headings (the table of contents) loses a tie to the heading of the section itself
+    hd.score = score;
+    hd.inList = (hi > 0 && heads[hi - 1].idx === hd.idx - 1) || (hi + 1 < heads.length && heads[hi + 1].idx === hd.idx + 1);
+    if (!best || score > best.score + 0.01 || (Math.abs(score - best.score) <= 0.01 && best.inList && !hd.inList)) best = hd;
+  }
+  function go(line, how, label){
+    var r = document.createRange();
+    r.setStart(line.node, Math.min(line.offset, line.node.length));
+    r.setEnd(line.node, Math.min(line.offset + 1, line.node.length));
+    var rect = r.getBoundingClientRect();
+    window.scrollTo(0, Math.max(0, rect.top + window.scrollY - 70));
+    var mark = document.createElement('div');
+    mark.style.cssText = 'position:absolute;left:0;width:6px;height:' + Math.max(24, rect.height * 3) + 'px;background:#8fdc4e;z-index:99999;transition:opacity 1.5s';
+    mark.style.top = (rect.top + window.scrollY - 4) + 'px';
+    document.body.appendChild(mark);
+    setTimeout(function(){ mark.style.opacity = '0'; }, 2500);
+    setTimeout(function(){ mark.remove(); }, 4200);
+    return JSON.stringify({how:how, label:label});
+  }
+  if (best && best.score >= 1.5) return go(best.line, 'section', best.line.text);
+  function find(p){
+    var hits = [];
+    for (var k = 0; k < lines.length && hits.length < 3; k++) if (norm(lines[k].text).indexOf(p) >= 0) hits.push(lines[k]);
+    if (!hits.length) return null;
+    return (hits.length > 1 && hits[0].pos < total * 0.15) ? hits[1] : hits[0];
+  }
+  for (var c2 = 0; c2 < cands.length; c2++) {
+    var p2 = norm(cands[c2]);
+    if (p2.length < 4) continue;
+    var f = find(p2);
+    if (f) return go(f, 'phrase', cands[c2]);
+  }
+  var words = [];
+  cands.forEach(function(c){ toks(c).forEach(function(w){ if (w.length >= 5 && /[a-z]/.test(w) && count(w) > 0) words.push(w); }); });
+  words.sort(function(a, b){ return count(a) - count(b); });
+  if (words.length) { var f2 = find(words[0]); if (f2) return go(f2, 'word', words[0]); }
+  return JSON.stringify({how:'none'});
+}
+"""
 
         /** Makes GameFAQs pages dark and keeps only the guide (and its page links) when one is showing. */
         private const val READER_JS = """
