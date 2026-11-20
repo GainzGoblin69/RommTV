@@ -155,13 +155,6 @@
             android:theme="@style/LemuroidLeanbackTheme" />
 
         <activity
-            android:name=".app.tv.romm.GuideActivity"
-            android:process=":game"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode"
-            android:exported="false"
-            android:theme="@style/LemuroidLeanbackTheme" />
-
-        <activity
             android:name=".app.tv.romm.RaProfileActivity"
             android:screenOrientation="sensorLandscape"
             android:exported="false"

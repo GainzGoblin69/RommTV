@@ -212,7 +212,9 @@ class TVGameMenuFragment(
             return true
         }
         if (preference.key == GUIDE) {
-            com.swordfish.lemuroid.app.tv.romm.GuideActivity.open(requireContext(), game.title, game.fileUri, game.systemId)
+            // The guide opens on the left of the screen, with its buttons here in the menu
+            (activity as? TVGameMenuActivity)?.openGuide(game)
+            (parentFragment as? androidx.leanback.preference.LeanbackSettingsFragmentCompat)?.startPreferenceFragment(GuideMenuFragment())
             return true
         }
         if (preference.key == EDIT_TOUCH) {
