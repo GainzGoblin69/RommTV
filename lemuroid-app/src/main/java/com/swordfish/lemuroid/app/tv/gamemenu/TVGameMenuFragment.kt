@@ -62,6 +62,17 @@ class TVGameMenuFragment(
                 true
             }
 
+        // A guide for the game, first in the menu
+        preferenceScreen.addPreference(
+            Preference(preferenceScreen.context).apply {
+                key = GUIDE
+                title = "Guide"
+                summary = "Walkthroughs for this game, opened where you are if RetroAchievements knows"
+                order = -1
+                setIcon(R.drawable.ic_menu_guide)
+            },
+        )
+
         // Phones get the same menu as TVs, plus the touch-screen extras the phone menu used to have
         if (!com.swordfish.lemuroid.lib.romm.Device.isTv(requireContext())) {
             preferenceScreen.addPreference(
@@ -200,6 +211,10 @@ class TVGameMenuFragment(
             com.swordfish.lemuroid.app.shared.input.ButtonStyle.setNintendo(requireContext(), pad, on)
             return true
         }
+        if (preference.key == GUIDE) {
+            com.swordfish.lemuroid.app.tv.romm.GuideActivity.open(requireContext(), game.title, game.fileUri)
+            return true
+        }
         if (preference.key == EDIT_TOUCH) {
             activity?.setResult(
                 android.app.Activity.RESULT_OK,
@@ -276,6 +291,7 @@ class TVGameMenuFragment(
     companion object {
         private const val BUTTON_STYLE = "pref_game_button_style"
         private const val EDIT_TOUCH = "pref_game_edit_touch"
+        private const val GUIDE = "pref_game_guide"
         private const val TILT = "pref_game_tilt"
         private const val JOHNNY = "pref_game_johnny_music"
     }
