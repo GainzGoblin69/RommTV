@@ -67,12 +67,17 @@ class GuideActivity : Activity() {
             }
         bar.addView(button("✕ Close") { finish() })
         suggestButton =
-            button(if (suggestions.isEmpty()) "Suggested spot" else "Y  Suggested: ${suggestions.first()}") { jumpToSuggestion() }
+            button(if (suggestions.isEmpty()) "Jump to where I am" else "Y  Jump to: ${suggestions.first()}") { jumpToSuggestion() }
+                .apply {
+                    maxWidth = (360 * dp).toInt()
+                    isSingleLine = true
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                }
         bar.addView(suggestButton)
         nextButton = button("X  Next match") { web.findNext(true) }.apply { visibility = View.GONE }
         bar.addView(nextButton)
         bar.addView(button("Find text…") { askFind() })
-        bar.addView(button("Other guides") { openSearch() })
+        bar.addView(button("Other guides") { otherGuides() })
         status =
             TextView(this).apply {
                 setTextColor(QUIET)
@@ -80,7 +85,7 @@ class GuideActivity : Activity() {
                 setPadding((12 * dp).toInt(), 0, 0, 0)
             }
         bar.addView(status)
-        root.addView(HorizontalScrollView(this).apply { addView(bar) })
+        val barScroll = HorizontalScrollView(this).apply { addView(bar); setBackgroundColor(RAISED_BAR) }
 
         web =
             WebView(this).apply {
@@ -102,6 +107,7 @@ class GuideActivity : Activity() {
                             url: String,
                         ) {
                             view.evaluateJavascript(READER_JS, null)
+                            if (autoPick) autoStep(view, url)
                             if (isGuide(url)) Guides.remember(this@GuideActivity, gameKey, url)
                             // After the reader layout settles, go back to where you were
                             pendingScroll?.takeIf { it.first == url }?.let { (_, y) -> view.postDelayed({ view.scrollTo(0, y) }, 600) }
@@ -116,7 +122,16 @@ class GuideActivity : Activity() {
                 }
             }
         root.addView(web, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        // Buttons along the bottom, where thumbs are, and never under the phone's status bar
+        root.addView(barScroll)
+        root.setOnApplyWindowInsetsListener { v, insets ->
+            @Suppress("DEPRECATION")
+            v.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop, insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
+            insets
+        }
         setContentView(root)
+        // Phones: hide the status bar so nothing sits on top of the guide (swipe down to see it)
+        if (!com.swordfish.lemuroid.lib.romm.Device.isTv(this)) hideStatusBar()
 
         val saved = Guides.saved(this, gameKey)
         if (saved != null) {
@@ -124,7 +139,10 @@ class GuideActivity : Activity() {
             web.loadUrl(saved.url)
             status.text = if (suggestions.isEmpty()) "Back where you left off" else "Back where you left off · Y jumps to where you are"
         } else {
+            // First time: find the game and open its top walkthrough without stopping at the search page
+            autoPick = true
             openSearch()
+            status.text = "Finding the best guide for $gameTitle…"
         }
         web.requestFocus()
     }
@@ -142,6 +160,76 @@ class GuideActivity : Activity() {
     private fun openSearch() {
         status.text = "Pick a guide for $gameTitle"
         web.loadUrl("https://gamefaqs.gamespot.com/search?game=" + URLEncoder.encode(gameTitle, "UTF-8"))
+    }
+
+    private fun hideStatusBar() {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            window.insetsController?.let {
+                it.hide(android.view.WindowInsets.Type.statusBars())
+                it.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && !com.swordfish.lemuroid.lib.romm.Device.isTv(this)) hideStatusBar()
+    }
+
+    /** True while the app is finding the guide by itself (search → game's guides → top walkthrough). */
+    private var autoPick = false
+
+    private fun autoStep(
+        view: WebView,
+        url: String,
+    ) {
+        when {
+            url.contains("/search") -> {
+                val slug = org.json.JSONObject.quote(platformSlug(intent.getStringExtra(EXTRA_SYSTEM).orEmpty()))
+                val title = org.json.JSONObject.quote(gameTitle)
+                view.evaluateJavascript("($PICK_GAME_JS)($title, $slug)") { href -> follow(view, href, "Couldn't find $gameTitle on GameFAQs. Pick it below.") }
+            }
+            Regex("/faqs/?(\\?.*)?$").containsMatchIn(url) -> {
+                view.evaluateJavascript("($PICK_GUIDE_JS)()") { href ->
+                    follow(view, href, "Pick a guide below")
+                    autoPick = false
+                }
+            }
+            isGuide(url) -> {
+                autoPick = false
+                status.text = "Picked the top walkthrough · \"Other guides\" to choose another"
+            }
+        }
+    }
+
+    private fun follow(
+        view: WebView,
+        raw: String?,
+        failure: String,
+    ) {
+        val href = runCatching { org.json.JSONTokener(raw).nextValue() as? String }.getOrNull().orEmpty()
+        if (href.isBlank()) {
+            autoPick = false
+            status.text = failure
+        } else {
+            view.loadUrl(href)
+        }
+    }
+
+    /** This game's list of guides (or the search, if no guide is open yet), to choose a different one. */
+    private fun otherGuides() {
+        autoPick = false
+        val url = web.url.orEmpty()
+        val list = Regex("^(.*/faqs)/\\d+").find(url)?.groupValues?.get(1)
+        if (list != null) {
+            status.text = "Pick a guide for $gameTitle"
+            web.loadUrl(list)
+        } else {
+            openSearch()
+        }
     }
 
     private fun isGuide(url: String) = Regex("gamefaqs\\.gamespot\\.com/.+/faqs/\\d+").containsMatchIn(url)
@@ -248,6 +336,10 @@ class GuideActivity : Activity() {
             }
             KeyEvent.KEYCODE_BUTTON_A ->
                 return super.dispatchKeyEvent(KeyEvent(event.downTime, event.eventTime, event.action, KeyEvent.KEYCODE_DPAD_CENTER, event.repeatCount))
+            KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BUTTON_START -> {
+                if (down) suggestButton.requestFocus()
+                return true
+            }
             KeyEvent.KEYCODE_DPAD_UP ->
                 // At the top of the page, Up reaches the buttons
                 if (down && web.hasFocus() && web.scrollY == 0) {
@@ -354,6 +446,36 @@ class GuideActivity : Activity() {
     companion object {
         const val EXTRA_TITLE = "title"
         const val EXTRA_KEY = "key"
+        const val EXTRA_SYSTEM = "system"
+        private val RAISED_BAR = Color.rgb(22, 28, 38)
+
+        /** The first part of GameFAQs' addresses for each console ("/snes/…"). */
+        fun platformSlug(systemId: String) =
+            when (systemId) {
+                "nes" -> "nes"
+                "snes" -> "snes"
+                "gb" -> "gameboy"
+                "gbc" -> "gbc"
+                "gba" -> "gba"
+                "n64" -> "n64"
+                "nds" -> "ds"
+                "md", "genesis" -> "genesis"
+                "scd", "segacd" -> "segacd"
+                "sms" -> "sms"
+                "gg" -> "gamegear"
+                "psx" -> "ps"
+                "psp" -> "psp"
+                "pce" -> "tg16"
+                "lynx" -> "lynx"
+                "atari2600" -> "2600"
+                "atari7800" -> "7800"
+                "ngp" -> "ngpocket"
+                "ngc" -> "ngpc"
+                "ws" -> "wonderswan"
+                "wsc" -> "wsc"
+                "fbneo", "mame2003plus" -> "arcade"
+                else -> ""
+            }
 
         private val BG = Color.rgb(13, 17, 23)
         private val RAISED = Color.rgb(30, 38, 51)
@@ -364,8 +486,14 @@ class GuideActivity : Activity() {
             context: Context,
             title: String,
             key: String,
+            systemId: String = "",
         ) {
-            context.startActivity(Intent(context, GuideActivity::class.java).putExtra(EXTRA_TITLE, title).putExtra(EXTRA_KEY, key))
+            context.startActivity(
+                Intent(context, GuideActivity::class.java)
+                    .putExtra(EXTRA_TITLE, title)
+                    .putExtra(EXTRA_KEY, key)
+                    .putExtra(EXTRA_SYSTEM, systemId),
+            )
         }
 
         /**
@@ -378,10 +506,14 @@ class GuideActivity : Activity() {
             val found = LinkedHashSet<String>()
 
             fun add(raw: String) {
+                // "Mainbrace Mayhem within Gangplank Galleon. 9 17" → both names, without the trailing numbers
+                val parts = raw.split(Regex("\\.\\s|\\s(?:within|inside|in|of|at|on|near)\\s"))
+                if (parts.size > 1) parts.forEach { add(it) }
                 val cleaned =
-                    raw.replace(Regex("[^\\p{L}\\p{N}'’ .&-]"), " ")
+                    raw.substringBefore(". ").replace(Regex("[^\\p{L}\\p{N}'’ .&-]"), " ")
                         .replace(Regex("\\s+"), " ")
                         .trim(' ', '.', '-', '\'')
+                        .replace(Regex("(\\s+\\d+)+$"), "")
                         .removePrefix("the ").removePrefix("The ")
                 if (cleaned.length >= 4 && cleaned.any { it.isLetter() }) found += cleaned
             }
@@ -393,6 +525,42 @@ class GuideActivity : Activity() {
             Regex("\\b([A-Z][\\p{L}'’]{4,})").findAll(head).forEach { add(it.groupValues[1]) }
             return found.toList()
         }
+
+        /** On GameFAQs' search results: the "Guides" link of the result that best matches the game and console. */
+        private const val PICK_GAME_JS = """
+function(title, slug){
+  function norm(t){ return (t||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim(); }
+  var want = norm(title).split(' ').filter(function(w){ return w.length > 1 || /[0-9]/.test(w); });
+  var links = Array.prototype.slice.call(document.querySelectorAll('a[href*="/faqs"]'));
+  var best = null, bestScore = -1;
+  links.forEach(function(a, i){
+    var href = a.getAttribute('href') || '';
+    if (!/\/faqs\/?$/.test(href.split('?')[0])) return;
+    var box = a.closest('div, li, tr') || a.parentElement;
+    for (var up = 0; up < 3 && box && box.parentElement && box.textContent.length < 40; up++) box = box.parentElement;
+    var name = norm((box && box.parentElement ? box.parentElement.textContent : a.textContent).slice(0, 300));
+    var score = 0;
+    want.forEach(function(w){ if ((' ' + name + ' ').indexOf(' ' + w + ' ') >= 0) score += 2; });
+    if (slug && href.indexOf('/' + slug + '/') >= 0) score += 5;
+    score -= i * 0.01;
+    if (score > bestScore) { bestScore = score; best = a; }
+  });
+  return best ? best.href : '';
+}
+"""
+
+        /** On a game's guide list: its top walkthrough (else its first full guide). */
+        private const val PICK_GUIDE_JS = """
+function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('a[href*="/faqs/"]')).filter(function(a){
+    return /\/faqs\/[0-9]+/.test(a.getAttribute('href') || '');
+  });
+  if (!links.length) return '';
+  function row(a){ var r = a.closest('li, tr, div'); return ((r ? r.textContent : a.textContent) || '').toLowerCase(); }
+  var walk = links.filter(function(a){ return /walkthrough|faq\/walkthrough|complete guide|guide and walkthrough/.test(row(a)); });
+  return (walk[0] || links[0]).href;
+}
+"""
 
         /** Finds where you are on the guide page: best-matching section, then the name anywhere, then its rarest word. */
         private const val LOCATE_JS = """

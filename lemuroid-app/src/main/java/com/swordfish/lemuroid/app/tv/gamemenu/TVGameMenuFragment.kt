@@ -212,7 +212,7 @@ class TVGameMenuFragment(
             return true
         }
         if (preference.key == GUIDE) {
-            com.swordfish.lemuroid.app.tv.romm.GuideActivity.open(requireContext(), game.title, game.fileUri)
+            com.swordfish.lemuroid.app.tv.romm.GuideActivity.open(requireContext(), game.title, game.fileUri, game.systemId)
             return true
         }
         if (preference.key == EDIT_TOUCH) {
