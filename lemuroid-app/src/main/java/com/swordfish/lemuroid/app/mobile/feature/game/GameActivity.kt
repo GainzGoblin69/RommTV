@@ -1,7 +1,6 @@
 package com.swordfish.lemuroid.app.mobile.feature.game
 
 import androidx.compose.runtime.Composable
-import com.swordfish.lemuroid.app.mobile.feature.gamemenu.GameMenuActivity
 import com.swordfish.lemuroid.app.shared.game.BaseGameActivity
 import com.swordfish.lemuroid.app.shared.game.BaseGameScreenViewModel
 
@@ -11,5 +10,6 @@ class GameActivity : BaseGameActivity() {
         MobileGameScreen(viewModel)
     }
 
-    override fun getDialogClass() = GameMenuActivity::class.java
+    // The same game menu as on TVs (it adds the touch-screen extras on phones)
+    override fun getDialogClass() = com.swordfish.lemuroid.app.tv.gamemenu.TVGameMenuActivity::class.java
 }

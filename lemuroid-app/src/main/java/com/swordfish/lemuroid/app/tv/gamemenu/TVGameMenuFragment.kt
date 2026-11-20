@@ -1,6 +1,7 @@
 package com.swordfish.lemuroid.app.tv.gamemenu
 
 import android.os.Bundle
+import com.swordfish.lemuroid.common.kotlin.serializable
 import android.view.View
 import androidx.leanback.preference.LeanbackPreferenceFragmentCompat
 import androidx.lifecycle.Lifecycle
@@ -60,6 +61,27 @@ class TVGameMenuFragment(
                 com.swordfish.lemuroid.app.shared.game.ScreenFilterPreview.apply?.invoke(value.toString())
                 true
             }
+
+        // Phones get the same menu as TVs, plus the touch-screen extras the phone menu used to have
+        if (!com.swordfish.lemuroid.lib.romm.Device.isTv(requireContext())) {
+            preferenceScreen.addPreference(
+                Preference(preferenceScreen.context).apply {
+                    key = EDIT_TOUCH
+                    title = getString(R.string.game_menu_edit_touch_controls)
+                    setIcon(R.drawable.ic_menu_controls)
+                },
+            )
+            if (tiltConfigs().isNotEmpty()) {
+                preferenceScreen.addPreference(
+                    Preference(preferenceScreen.context).apply {
+                        key = TILT
+                        title = getString(R.string.game_menu_tilt_sensor)
+                        summary = getString(tiltEntry(currentTilt())?.descriptionId ?: R.string.tilt_configuration_disabled)
+                        setIcon(R.drawable.ic_menu_controls)
+                    },
+                )
+            }
+        }
 
         // Xbox or Nintendo buttons for the controller that opened this menu (or player 1's, if a remote or touch did)
         buttonStyleDevice()?.let { pad ->
@@ -178,6 +200,37 @@ class TVGameMenuFragment(
             com.swordfish.lemuroid.app.shared.input.ButtonStyle.setNintendo(requireContext(), pad, on)
             return true
         }
+        if (preference.key == EDIT_TOUCH) {
+            activity?.setResult(
+                android.app.Activity.RESULT_OK,
+                android.content.Intent().putExtra(com.swordfish.lemuroid.app.shared.GameMenuContract.RESULT_EDIT_TOUCH_CONTROLS, true),
+            )
+            activity?.finish()
+            return true
+        }
+        if (preference.key == TILT) {
+            val configs = tiltConfigs()
+            val entries = configs.mapNotNull { tiltEntry(it) }
+            android.app.AlertDialog.Builder(requireContext())
+                .setTitle(R.string.game_menu_tilt_sensor)
+                .setSingleChoiceItems(
+                    entries.map { getString(it.descriptionId) }.toTypedArray(),
+                    entries.indexOfFirst { it.configuration == currentTilt() },
+                ) { dialog, which ->
+                    dialog.dismiss()
+                    activity?.setResult(
+                        android.app.Activity.RESULT_OK,
+                        android.content.Intent().putExtra(
+                            com.swordfish.lemuroid.app.shared.GameMenuContract.RESULT_CHANGE_TILT_CONFIG,
+                            entries[which].configuration,
+                        ),
+                    )
+                    activity?.finish()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+            return true
+        }
         if (preference.key == "pref_game_players") {
             startActivity(android.content.Intent(requireContext(), com.swordfish.lemuroid.app.tv.romm.GamePlayersActivity::class.java))
             return true
@@ -199,6 +252,19 @@ class TVGameMenuFragment(
         return super.onPreferenceTreeClick(preference)
     }
 
+    private fun tiltConfigs(): List<com.swordfish.touchinput.radial.sensors.TiltConfiguration> =
+        activity?.intent?.serializable<Array<com.swordfish.touchinput.radial.sensors.TiltConfiguration>>(
+            com.swordfish.lemuroid.app.shared.GameMenuContract.EXTRA_TILT_ALL_CONFIGS,
+        )?.toList().orEmpty()
+
+    private fun currentTilt(): com.swordfish.touchinput.radial.sensors.TiltConfiguration =
+        activity?.intent?.serializable<com.swordfish.touchinput.radial.sensors.TiltConfiguration>(
+            com.swordfish.lemuroid.app.shared.GameMenuContract.EXTRA_CURRENT_TILT_CONFIG,
+        ) ?: com.swordfish.touchinput.radial.sensors.TiltConfiguration.Disabled
+
+    private fun tiltEntry(config: com.swordfish.touchinput.radial.sensors.TiltConfiguration) =
+        com.swordfish.lemuroid.app.mobile.feature.gamemenu.tilt.TiltConfigurationMenuEntry.values().firstOrNull { it.configuration == config }
+
     /** The controller whose buttons the switch changes: whoever opened the menu, else the first one connected. */
     private fun buttonStyleDevice(): android.view.InputDevice? =
         com.swordfish.lemuroid.app.shared.input.ButtonStyle.menuOpener
@@ -209,6 +275,8 @@ class TVGameMenuFragment(
 
     companion object {
         private const val BUTTON_STYLE = "pref_game_button_style"
+        private const val EDIT_TOUCH = "pref_game_edit_touch"
+        private const val TILT = "pref_game_tilt"
         private const val JOHNNY = "pref_game_johnny_music"
     }
 
