@@ -69,19 +69,54 @@ class GuidePanel(
     private var chosen = false
 
     /** If the guide's own title doesn't name this game, it's someone else's guide: find the right one. */
-    private fun checkIsThisGame(view: WebView) {
+    private fun checkIsThisGame(
+        view: WebView,
+        url: String,
+    ) {
         view.evaluateJavascript("document.title") { raw ->
             val pageTitle = runCatching { org.json.JSONTokener(raw).nextValue() as? String }.getOrNull().orEmpty()
-            if (pageTitle.isBlank()) return@evaluateJavascript
-            val want = words(gameTitle).filter { it !in STOP }
-            if (want.isEmpty()) return@evaluateJavascript
-            val have = words(pageTitle).toSet()
-            if (want.count { it in have }.toDouble() / want.size >= 0.5) return@evaluateJavascript
+            if (namesGame(pageTitle, gameTitle) || titleMatch(url) >= MIN_MATCH) {
+                reveal()
+                return@evaluateJavascript
+            }
             Guides.forget(activity, gameKey)
+            retries++
+            if (retries > 2) {
+                // Stop guessing: let you pick
+                autoPick = false
+                status = "Couldn't find the right guide by itself. Pick $gameTitle, then a guide."
+                openSearch()
+                return@evaluateJavascript
+            }
             status = "That guide was for another game. Finding the right one…"
             autoPick = true
             openSearch()
         }
+    }
+
+    private var retries = 0
+
+    /** Hidden while pages load and while it finds the guide, so GameFAQs' pages never flash by. */
+    private val loading =
+        android.widget.TextView(activity).apply {
+            setTextColor(Color.rgb(167, 178, 194))
+            textSize = 16f
+            gravity = android.view.Gravity.CENTER
+            text = "Opening the guide…"
+        }
+
+    private fun conceal(message: String) {
+        web.alpha = 0f
+        loading.text = message
+        loading.visibility = View.VISIBLE
+    }
+
+    private fun reveal() {
+        // A moment for the reader layout to apply first
+        web.postDelayed({
+            web.alpha = 1f
+            loading.visibility = View.GONE
+        }, 150)
     }
 
     /** True after "Choose another guide": the guide you open next is kept as yours. */
@@ -92,6 +127,7 @@ class GuidePanel(
 
     init {
         frame.addView(web, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        frame.addView(loading, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         web.webViewClient =
             object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(
@@ -99,19 +135,32 @@ class GuidePanel(
                     request: WebResourceRequest,
                 ) = false
 
+                override fun onPageStarted(
+                    view: WebView,
+                    url: String,
+                    favicon: android.graphics.Bitmap?,
+                ) {
+                    conceal(if (autoPick) "Finding the best guide for $gameTitle…" else "Opening the guide…")
+                }
+
                 override fun onPageFinished(
                     view: WebView,
                     url: String,
                 ) {
                     view.evaluateJavascript(READER_JS, null)
-                    if (autoPick) autoStep(view, url)
-                    if (isGuide(url)) {
-                        Guides.remember(activity, gameKey, url)
-                        if (userPicking) {
-                            Guides.choose(activity, gameKey)
-                            chosen = true
+                    when {
+                        autoPick && !isGuide(url) -> autoStep(view, url)
+                        isGuide(url) -> {
+                            if (autoPick) autoStep(view, url)
+                            Guides.remember(activity, gameKey, url)
+                            if (userPicking) {
+                                Guides.choose(activity, gameKey)
+                                chosen = true
+                            }
+                            if (chosen) reveal() else checkIsThisGame(view, url)
                         }
-                        if (!chosen) checkIsThisGame(view)
+                        // Search results or a guide list you're choosing from
+                        else -> reveal()
                     }
                     // After the reader layout settles, go back to where you were
                     pendingScroll?.takeIf { it.first == url }?.let { (_, y) -> view.postDelayed({ view.scrollTo(0, y) }, 600) }
@@ -129,7 +178,8 @@ class GuidePanel(
         loaded = true
         val saved = Guides.saved(activity, gameKey)?.takeIf { it.chosen || titleMatch(it.url) >= MIN_MATCH }
         if (saved != null) {
-            chosen = saved.chosen
+            // Still checked against the game when it loads, even if you picked it before
+            chosen = false
             pendingScroll = saved.url to saved.scroll
             web.loadUrl(saved.url)
             status = if (suggestions.isEmpty()) "Back where you left off" else "Back where you left off · Y jumps to where you are"
@@ -268,6 +318,7 @@ class GuidePanel(
         if (href.isBlank()) {
             autoPick = false
             status = failure
+            reveal()
         } else {
             view.loadUrl(href)
         }
@@ -282,6 +333,21 @@ class GuidePanel(
 
         private val STOP = setOf("the", "of", "a", "an", "and", "in", "to", "on")
 
+        /** Whether a page title names the game: its words, or its name run together ("LocoRoco" in "Loco Roco"). */
+        private fun namesGame(
+            pageTitle: String,
+            game: String,
+        ): Boolean {
+            if (pageTitle.isBlank()) return false
+            val want = words(game).filter { it !in STOP }
+            if (want.isEmpty()) return true
+            val have = words(pageTitle)
+            val haveSet = have.toSet()
+            val joined = have.joinToString("")
+            if (want.joinToString("") .let { it.length >= 4 && joined.contains(it) }) return true
+            return want.count { it in haveSet || (it.length >= 4 && joined.contains(it)) }.toDouble() / want.size >= 0.6
+        }
+
         private fun words(text: String) =
             text.lowercase().replace("&", " and ").replace(Regex("[^a-z0-9]+"), " ").trim().split(" ").filter { it.isNotBlank() }
 
@@ -294,6 +360,9 @@ class GuidePanel(
             val m = Regex("gamefaqs\\.gamespot\\.com/([a-z0-9]+)/\\d+-([a-z0-9-]+)").find(url) ?: return 0.0
             val slugWords = m.groupValues[2].split('-').filter { it.isNotBlank() }
             val want = words(title).filter { it !in STOP }
+            if (want.isNotEmpty() && slugWords.joinToString("") == want.joinToString("")) {
+                return 10.0 + if (platform.isNotBlank() && m.groupValues[1] == platform) 3 else 0
+            }
             val common = want.count { it in slugWords }
             if (common == 0) return 0.0
             var score = 3.0 * common - (slugWords.size - common) - (want.size - common)
@@ -380,8 +449,10 @@ function(title, slug){
     if (seen[base]) return; seen[base] = 1;
     var sw = m[3].split('-').filter(function(w){ return w; });
     var common = want.filter(function(w){ return sw.indexOf(w) >= 0; }).length;
-    if (!common) return;
-    var score = 3 * common - (sw.length - common) - (want.length - common);
+    var score;
+    if (want.length && sw.join('') === want.join('')) score = 10;
+    else if (!common) return;
+    else score = 3 * common - (sw.length - common) - (want.length - common);
     if (slug && m[1] === slug) score += 3;
     if (score > bestScore) { bestScore = score; best = base; }
   });
