@@ -307,10 +307,6 @@ class GuidePanel(
                 else -> ""
             }
 
-        private val BG = Color.rgb(13, 17, 23)
-        private val RAISED = Color.rgb(30, 38, 51)
-        private val LIME = Color.rgb(143, 220, 78)
-        private val QUIET = Color.rgb(167, 178, 194)
 
 
         private val GENERIC = setOf("zone", "stage", "level", "world", "area", "act", "round", "chapter", "mission", "floor", "dungeon")
