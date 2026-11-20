@@ -50,10 +50,11 @@ class GuidePanel(
     val suggestions: List<String> =
         locationsIn(runCatching { com.swordfish.libretrodroid.RetroAchievements.richPresence() }.getOrDefault(""))
 
-    val frame = FrameLayout(activity).apply { setBackgroundColor(BG); visibility = View.GONE }
+    // Mostly dark so the guide reads easily, with the paused game faintly visible behind it
+    val frame = FrameLayout(activity).apply { setBackgroundColor(SHADE); visibility = View.GONE }
     val web: WebView =
         WebView(activity).apply {
-            setBackgroundColor(BG)
+            setBackgroundColor(Color.TRANSPARENT)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.textZoom = 110
@@ -63,6 +64,25 @@ class GuidePanel(
 
     private var pendingScroll: Pair<String, Int>? = null
     private var autoPick = false
+
+    /** The open guide is one you picked yourself, so it's kept even if its title looks different. */
+    private var chosen = false
+
+    /** If the guide's own title doesn't name this game, it's someone else's guide: find the right one. */
+    private fun checkIsThisGame(view: WebView) {
+        view.evaluateJavascript("document.title") { raw ->
+            val pageTitle = runCatching { org.json.JSONTokener(raw).nextValue() as? String }.getOrNull().orEmpty()
+            if (pageTitle.isBlank()) return@evaluateJavascript
+            val want = words(gameTitle).filter { it !in STOP }
+            if (want.isEmpty()) return@evaluateJavascript
+            val have = words(pageTitle).toSet()
+            if (want.count { it in have }.toDouble() / want.size >= 0.5) return@evaluateJavascript
+            Guides.forget(activity, gameKey)
+            status = "That guide was for another game. Finding the right one…"
+            autoPick = true
+            openSearch()
+        }
+    }
 
     /** True after "Choose another guide": the guide you open next is kept as yours. */
     private var userPicking = false
@@ -87,7 +107,11 @@ class GuidePanel(
                     if (autoPick) autoStep(view, url)
                     if (isGuide(url)) {
                         Guides.remember(activity, gameKey, url)
-                        if (userPicking) Guides.choose(activity, gameKey)
+                        if (userPicking) {
+                            Guides.choose(activity, gameKey)
+                            chosen = true
+                        }
+                        if (!chosen) checkIsThisGame(view)
                     }
                     // After the reader layout settles, go back to where you were
                     pendingScroll?.takeIf { it.first == url }?.let { (_, y) -> view.postDelayed({ view.scrollTo(0, y) }, 600) }
@@ -105,6 +129,7 @@ class GuidePanel(
         loaded = true
         val saved = Guides.saved(activity, gameKey)?.takeIf { it.chosen || titleMatch(it.url) >= MIN_MATCH }
         if (saved != null) {
+            chosen = saved.chosen
             pendingScroll = saved.url to saved.scroll
             web.loadUrl(saved.url)
             status = if (suggestions.isEmpty()) "Back where you left off" else "Back where you left off · Y jumps to where you are"
@@ -252,8 +277,10 @@ class GuidePanel(
     private fun titleMatch(url: String) = slugScore(url, gameTitle, platformSlug(systemId))
 
     companion object {
-        private val BG = Color.rgb(13, 17, 23)
+        private val SHADE = Color.argb(214, 13, 17, 23)
         private const val MIN_MATCH = 3.0
+
+        private val STOP = setOf("the", "of", "a", "an", "and", "in", "to", "on")
 
         private fun words(text: String) =
             text.lowercase().replace("&", " and ").replace(Regex("[^a-z0-9]+"), " ").trim().split(" ").filter { it.isNotBlank() }
@@ -266,7 +293,7 @@ class GuidePanel(
         ): Double {
             val m = Regex("gamefaqs\\.gamespot\\.com/([a-z0-9]+)/\\d+-([a-z0-9-]+)").find(url) ?: return 0.0
             val slugWords = m.groupValues[2].split('-').filter { it.isNotBlank() }
-            val want = words(title)
+            val want = words(title).filter { it !in STOP }
             val common = want.count { it in slugWords }
             if (common == 0) return 0.0
             var score = 3.0 * common - (slugWords.size - common) - (want.size - common)
@@ -343,7 +370,8 @@ class GuidePanel(
         private const val PICK_GAME_JS = """
 function(title, slug){
   function words(t){ return (t||'').toLowerCase().replace(/&/g,' and ').replace(/[^a-z0-9]+/g,' ').trim().split(' ').filter(function(w){ return w; }); }
-  var want = words(title);
+  var STOP = {the:1, of:1, a:1, an:1, and:1, 'in':1, to:1, on:1};
+  var want = words(title).filter(function(w){ return !STOP[w]; });
   var best = null, bestScore = 2.5, seen = {};
   Array.prototype.slice.call(document.querySelectorAll('a[href]')).forEach(function(a){
     var m = (a.getAttribute('href') || '').match(/^(?:https?:\/\/gamefaqs\.gamespot\.com)?\/([a-z0-9]+)\/([0-9]+)-([a-z0-9-]+)/);
@@ -481,10 +509,11 @@ function(cands){
 
         private const val READER_JS = """
 (function(){
-  var css = 'html,body{background:#0d1117!important;color:#e6edf3!important}' +
+  var css = 'html,body{background:transparent!important;color:#e6edf3!important}' +
     'a{color:#8fdc4e!important}' +
-    'pre,#faqtext,#faqwrap,.ffaq{color:#e6edf3!important;background:#0d1117!important;white-space:pre-wrap!important;font-size:15px!important;line-height:1.45!important}' +
+    'pre,#faqtext,#faqwrap,.ffaq{color:#e6edf3!important;background:transparent!important;white-space:pre-wrap!important;font-size:15px!important;line-height:1.45!important}' +
     'img{max-width:100%!important;height:auto!important}' +
+    'div,section,main,article,header,nav,table,td,th,tr,ul,li,p,span{background-color:transparent!important;background-image:none!important}' +
     '[id*="ad_"],[class*="ad_"],[class*="adsby"],iframe{display:none!important}';
   var s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
   var guide = document.querySelector('#faqwrap') || document.querySelector('#faqtext');
@@ -499,7 +528,7 @@ function(cands){
       if (c.tagName === 'SCRIPT' || c.tagName === 'STYLE') continue;
       c.style.display = 'none';
     }
-    parent.style.background = '#0d1117'; parent.style.margin = '0'; parent.style.padding = '8px';
+    parent.style.background = 'transparent'; parent.style.margin = '0'; parent.style.padding = '8px';
     node = parent;
   }
 })();
