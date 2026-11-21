@@ -54,6 +54,7 @@ class GuideMenuFragment : LeanbackPreferenceFragmentCompat() {
             R.drawable.ic_menu_guide,
         )
         item("next", "Next match", "X", R.drawable.ic_menu_fast_forward)
+        item("top", "Back to top", null, R.drawable.ic_menu_load)
         item("find", "Find text…", null, R.drawable.ic_menu_image)
         item("scroll", "Scroll or pick links", "Left to move into the guide · L/R page up and down · B comes back here", R.drawable.ic_menu_controls)
         item("other", "Choose another guide", null, R.drawable.ic_menu_load)
@@ -83,7 +84,8 @@ class GuideMenuFragment : LeanbackPreferenceFragmentCompat() {
             "jump" -> panel.jumpToSuggestion()
             "next" -> panel.nextMatch()
             "find" -> panel.askFind()
-            "scroll" -> panel.web.requestFocus()
+            "scroll" -> panel.focusGuide()
+            "top" -> panel.toTop()
             "other" -> panel.otherGuides()
             else -> return super.onPreferenceTreeClick(preference)
         }

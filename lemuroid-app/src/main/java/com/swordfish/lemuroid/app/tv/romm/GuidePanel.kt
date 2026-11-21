@@ -76,6 +76,9 @@ class GuidePanel(
         view.evaluateJavascript("document.title") { raw ->
             val pageTitle = runCatching { org.json.JSONTokener(raw).nextValue() as? String }.getOrNull().orEmpty()
             if (namesGame(pageTitle, gameTitle) || titleMatch(url) >= MIN_MATCH) {
+                if (status.startsWith("Finding") || status.startsWith("That guide")) {
+                    status = if (suggestions.isEmpty()) "Guide ready" else "Guide ready · Y jumps to where you are"
+                }
                 reveal()
                 return@evaluateJavascript
             }
@@ -126,7 +129,15 @@ class GuidePanel(
     val isOpen get() = frame.visibility == View.VISIBLE
 
     init {
-        frame.addView(web, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        // A gap before the menu panel so lines don't run up against it
+        val gap = (32 * activity.resources.displayMetrics.density).toInt()
+        frame.addView(
+            web,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT).apply {
+                rightMargin = gap
+                leftMargin = gap / 2
+            },
+        )
         frame.addView(loading, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         web.webViewClient =
             object : WebViewClient() {
@@ -202,6 +213,20 @@ class GuidePanel(
         Guides.remember(activity, gameKey, url, web.scrollY)
         val key = locationKey
         if (jumped && key != null) Guides.learn(activity, gameKey, guideId(url), key, url, web.scrollY)
+    }
+
+    /** Moves the controller into the guide without the page jumping (WebView would scroll to its first link). */
+    fun focusGuide() {
+        val y = web.scrollY
+        web.requestFocus(android.view.View.FOCUS_LEFT)
+        web.scrollTo(0, y)
+        web.post { web.scrollTo(0, y) }
+        web.postDelayed({ web.scrollTo(0, y) }, 120)
+    }
+
+    fun toTop() {
+        web.scrollTo(0, 0)
+        status = "Top of the guide"
     }
 
     fun pageUp() = web.pageUp(false)

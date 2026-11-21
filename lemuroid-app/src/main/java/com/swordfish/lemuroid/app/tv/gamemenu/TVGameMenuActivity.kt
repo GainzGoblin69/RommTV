@@ -161,7 +161,7 @@ class TVGameMenuActivity : TVBaseSettingsActivity() {
             android.view.KeyEvent.KEYCODE_DPAD_LEFT ->
                 // From the buttons, Left reaches the guide (to scroll it or pick a link)
                 if (!inGuide && down) {
-                    panel.web.requestFocus()
+                    panel.focusGuide()
                     return true
                 }
         }
