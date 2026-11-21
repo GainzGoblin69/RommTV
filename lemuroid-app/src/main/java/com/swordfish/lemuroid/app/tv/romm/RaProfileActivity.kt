@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -212,7 +213,13 @@ class RaProfileActivity : ComponentActivity() {
         // The top of the page (picture, stats) can't be selected, so reaching the tabs scrolls all the way up
         val listState = androidx.compose.foundation.lazy.rememberLazyListState()
         val scope = androidx.compose.runtime.rememberCoroutineScope()
-        val toTop: () -> Unit = { scope.launch { listState.animateScrollToItem(0) } }
+        val toTop: () -> Unit = {
+            scope.launch {
+                // After the list's own scroll to the focused tab, which would otherwise cancel this one
+                kotlinx.coroutines.delay(250)
+                listState.animateScrollToItem(0)
+            }
+        }
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 32.dp)) {
             item {
                 Header(lastGame?.ingameUrl) {
@@ -391,7 +398,13 @@ class RaProfileActivity : ComponentActivity() {
         // The top of the page (picture, stats) can't be selected, so reaching the tabs scrolls all the way up
         val listState = androidx.compose.foundation.lazy.rememberLazyListState()
         val scope = androidx.compose.runtime.rememberCoroutineScope()
-        val toTop: () -> Unit = { scope.launch { listState.animateScrollToItem(0) } }
+        val toTop: () -> Unit = {
+            scope.launch {
+                // After the list's own scroll to the focused tab, which would otherwise cancel this one
+                kotlinx.coroutines.delay(250)
+                listState.animateScrollToItem(0)
+            }
+        }
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 32.dp)) {
             item {
                 Header(g.ingameUrl) {
@@ -501,7 +514,7 @@ class RaProfileActivity : ComponentActivity() {
         banner: String?,
         content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
     ) {
-        Box(Modifier.fillMaxWidth().height(200.dp)) {
+        Box(Modifier.fillMaxWidth().height(200.dp).focusable()) {
             if (!banner.isNullOrBlank()) {
                 AsyncImage(banner, null, Modifier.fillMaxSize().alpha(0.45f), contentScale = ContentScale.Crop)
             }
