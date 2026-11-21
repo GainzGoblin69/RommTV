@@ -60,6 +60,8 @@ class GuidePanel(
             settings.textZoom = 110
             isFocusable = true
             isFocusableInTouchMode = true
+            // No focus outline around the guide when the controller moves into it
+            if (android.os.Build.VERSION.SDK_INT >= 26) defaultFocusHighlightEnabled = false
         }
 
     private var pendingScroll: Pair<String, Int>? = null
@@ -611,7 +613,14 @@ function(cands){
     'img{max-width:100%!important;height:auto!important}' +
     'div,section,main,article,header,nav,table,td,th,tr,ul,li,p,span{background-color:transparent!important;background-image:none!important}' +
     '[id*="ad_"],[class*="ad_"],[class*="adsby"],iframe{display:none!important}';
+  css += '*:focus,*:focus-visible{outline:none!important;box-shadow:none!important}' +
+    '*{-webkit-tap-highlight-color:transparent!important}';
   var s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  // GameFAQs' floating buttons (like its "back to top") — the menu has its own
+  Array.prototype.slice.call(document.querySelectorAll('body *')).forEach(function(el){
+    var p = getComputedStyle(el).position;
+    if (p === 'fixed' || p === 'sticky') el.style.display = 'none';
+  });
   var guide = document.querySelector('#faqwrap') || document.querySelector('#faqtext');
   if (!guide) return;
   var node = guide;
