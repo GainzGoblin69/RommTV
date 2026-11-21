@@ -62,6 +62,9 @@ class GuidePanel(
             isFocusableInTouchMode = true
             // No focus outline around the guide when the controller moves into it
             if (android.os.Build.VERSION.SDK_INT >= 26) defaultFocusHighlightEnabled = false
+            isHorizontalScrollBarEnabled = false
+            settings.loadWithOverviewMode = true
+            settings.useWideViewPort = false
         }
 
     private var pendingScroll: Pair<String, Int>? = null
@@ -230,6 +233,9 @@ class GuidePanel(
         web.scrollTo(0, 0)
         status = "Top of the guide"
     }
+
+    /** A guide (not a search or a list of guides) is showing. */
+    val onGuide get() = web.url?.let { isGuide(it) } == true
 
     fun pageUp() = web.pageUp(false)
 
@@ -613,7 +619,10 @@ function(cands){
     'img{max-width:100%!important;height:auto!important}' +
     'div,section,main,article,header,nav,table,td,th,tr,ul,li,p,span{background-color:transparent!important;background-image:none!important}' +
     '[id*="ad_"],[class*="ad_"],[class*="adsby"],iframe{display:none!important}';
-  css += '*:focus,*:focus-visible{outline:none!important;box-shadow:none!important}' +
+  css += 'html,body{max-width:100%!important;overflow-x:hidden!important}' +
+    '#faqwrap,#faqtext,.ffaq,pre{max-width:100%!important;width:auto!important;min-width:0!important;box-sizing:border-box!important}' +
+    'pre,#faqtext,#faqwrap,.ffaq{white-space:pre-wrap!important;overflow-wrap:anywhere!important;word-break:break-word!important;overflow-x:hidden!important}' +
+    '*:focus,*:focus-visible{outline:none!important;box-shadow:none!important}' +
     '*{-webkit-tap-highlight-color:transparent!important}';
   var s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
   // GameFAQs' floating buttons (like its "back to top") — the menu has its own
@@ -624,6 +633,15 @@ function(cands){
     });
   }
   hideFloating();
+  function fitColumns(){
+    var pres = document.querySelectorAll('pre');
+    if (!pres.length) return;
+    var width = (document.documentElement.clientWidth || window.innerWidth) - 24;
+    var size = Math.max(9, Math.min(15, Math.floor(width / (80 * 0.61))));
+    for (var i = 0; i < pres.length; i++) { pres[i].style.setProperty('font-size', size + 'px', 'important'); }
+  }
+  fitColumns();
+  window.addEventListener('resize', fitColumns);
   // Some only appear after scrolling
   var pending = false;
   window.addEventListener('scroll', function(){

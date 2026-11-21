@@ -56,7 +56,7 @@ class GuideMenuFragment : LeanbackPreferenceFragmentCompat() {
         item("next", "Next match", "X", R.drawable.ic_menu_fast_forward)
         item("top", "Back to top", null, R.drawable.ic_menu_load)
         item("find", "Find text…", null, R.drawable.ic_menu_image)
-        item("scroll", "Scroll or pick links", "Left to move into the guide · L/R page up and down · B comes back here", R.drawable.ic_menu_controls)
+        item("scroll", "Scroll or pick links", "Left: into the guide · Up/Down scroll · L/R page · Right or B: back here", R.drawable.ic_menu_controls)
         item("other", "Choose another guide", null, R.drawable.ic_menu_load)
         preferenceScreen = screen
     }

@@ -158,7 +158,23 @@ class TVGameMenuActivity : TVBaseSettingsActivity() {
                         android.view.KeyEvent(event.downTime, event.eventTime, event.action, android.view.KeyEvent.KEYCODE_DPAD_CENTER, event.repeatCount),
                     )
                 }
+            // Reading a guide: Up/Down scroll, Right goes back to the buttons (left/right never move the text)
+            android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN ->
+                if (inGuide && panel.onGuide) {
+                    if (down) {
+                        val step = panel.web.height / 6
+                        panel.scrollBy(if (event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) step else -step)
+                    }
+                    return true
+                }
+            android.view.KeyEvent.KEYCODE_DPAD_RIGHT ->
+                if (inGuide && panel.onGuide) {
+                    if (down) menuList()?.requestFocus()
+                    return true
+                }
             android.view.KeyEvent.KEYCODE_DPAD_LEFT ->
+                if (inGuide && panel.onGuide) return true
+                else
                 // From the buttons, Left reaches the guide (to scroll it or pick a link)
                 if (!inGuide && down) {
                     panel.focusGuide()
