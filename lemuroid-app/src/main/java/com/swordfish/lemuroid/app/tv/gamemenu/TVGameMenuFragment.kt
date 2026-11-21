@@ -62,6 +62,8 @@ class TVGameMenuFragment(
                 true
             }
 
+        // Coming back from the guide (or any sub-page) rebuilds this view; the extras are only added once
+        if (findPreference<Preference>(GUIDE) == null) {
         // A guide for the game, first in the menu
         preferenceScreen.addPreference(
             Preference(preferenceScreen.context).apply {
@@ -120,6 +122,7 @@ class TVGameMenuFragment(
             preferenceScreen.addPreference(johnny)
             // Set after it's added: adding a switch resets it to off
             johnny.isChecked = com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.isOn
+        }
         }
 
         if (numDisks > 1) {
