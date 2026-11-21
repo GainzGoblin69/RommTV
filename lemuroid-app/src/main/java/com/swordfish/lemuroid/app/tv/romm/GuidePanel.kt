@@ -617,9 +617,18 @@ function(cands){
     '*{-webkit-tap-highlight-color:transparent!important}';
   var s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
   // GameFAQs' floating buttons (like its "back to top") — the menu has its own
-  Array.prototype.slice.call(document.querySelectorAll('body *')).forEach(function(el){
-    var p = getComputedStyle(el).position;
-    if (p === 'fixed' || p === 'sticky') el.style.display = 'none';
+  function hideFloating(){
+    Array.prototype.slice.call(document.querySelectorAll('body *')).forEach(function(el){
+      var p = getComputedStyle(el).position;
+      if (p === 'fixed' || p === 'sticky') el.style.display = 'none';
+    });
+  }
+  hideFloating();
+  // Some only appear after scrolling
+  var pending = false;
+  window.addEventListener('scroll', function(){
+    if (pending) return; pending = true;
+    setTimeout(function(){ pending = false; hideFloating(); }, 400);
   });
   var guide = document.querySelector('#faqwrap') || document.querySelector('#faqtext');
   if (!guide) return;
