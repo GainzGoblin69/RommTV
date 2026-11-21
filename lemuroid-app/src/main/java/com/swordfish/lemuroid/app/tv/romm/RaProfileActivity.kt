@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -208,7 +209,11 @@ class RaProfileActivity : ComponentActivity() {
         }
         val p = d.profile
         val lastGame = d.played.firstOrNull { it.id == p.lastGameId } ?: d.played.firstOrNull()
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 32.dp)) {
+        // The top of the page (picture, stats) can't be selected, so reaching the tabs scrolls all the way up
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val toTop: () -> Unit = { scope.launch { listState.animateScrollToItem(0) } }
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 32.dp)) {
             item {
                 Header(lastGame?.ingameUrl) {
                     AsyncImage(
@@ -254,7 +259,7 @@ class RaProfileActivity : ComponentActivity() {
                 }
             }
             item {
-                Tabs(listOf("Recently played", "Recent unlocks", "Awards"), tab, firstTab) { tab = it }
+                Tabs(listOf("Recently played", "Recent unlocks", "Awards"), tab, firstTab, toTop) { tab = it }
             }
             when (tab) {
                 0 -> playedRows(d.played, onGame)
@@ -383,7 +388,11 @@ class RaProfileActivity : ComponentActivity() {
             Message(error ?: "Loading…")
             return
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 32.dp)) {
+        // The top of the page (picture, stats) can't be selected, so reaching the tabs scrolls all the way up
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val toTop: () -> Unit = { scope.launch { listState.animateScrollToItem(0) } }
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 32.dp)) {
             item {
                 Header(g.ingameUrl) {
                     AsyncImage(g.iconUrl, null, Modifier.size(112.dp).clip(RoundedCornerShape(10.dp)))
@@ -400,7 +409,7 @@ class RaProfileActivity : ComponentActivity() {
                     }
                 }
             }
-            item { Tabs(listOf("Achievements", "Leaderboards", "Comments", "Supported files"), tab, firstTab) { tab = it } }
+            item { Tabs(listOf("Achievements", "Leaderboards", "Comments", "Supported files"), tab, firstTab, toTop) { tab = it } }
             when (tab) {
                 0 -> {
                     if (g.achievements.isEmpty()) item { Note("This game has no achievements yet.") }
@@ -510,9 +519,13 @@ class RaProfileActivity : ComponentActivity() {
         names: List<String>,
         selected: Int,
         first: FocusRequester,
+        onFocused: () -> Unit,
         onSelect: (Int) -> Unit,
     ) {
-        Row(Modifier.padding(horizontal = 48.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier.padding(horizontal = 48.dp, vertical = 10.dp).onFocusChanged { if (it.hasFocus) onFocused() },
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             names.forEachIndexed { i, name ->
                 Chip(name, highlight = i == selected, modifier = if (i == 0) Modifier.focusRequester(first) else Modifier) { onSelect(i) }
             }
