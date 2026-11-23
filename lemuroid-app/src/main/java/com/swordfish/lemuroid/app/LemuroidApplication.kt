@@ -38,6 +38,8 @@ class LemuroidApplication : DaggerApplication(), HasWorkerInjector, ImageLoaderF
 
         // Background music for the menus lives in the main process (games run in their own)
         if (isMainProcess()) com.swordfish.lemuroid.app.tv.romm.MenuMusic.init(this)
+        // Unlocks earned offline go to RetroAchievements once the app is back online
+        if (isMainProcess()) com.swordfish.lemuroid.app.tv.romm.OfflineAchievements.syncSoon(this)
 
         DynamicColors.applyToActivitiesIfAvailable(this)
     }

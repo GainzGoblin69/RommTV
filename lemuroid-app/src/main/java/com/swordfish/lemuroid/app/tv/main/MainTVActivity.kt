@@ -93,6 +93,8 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
 
     override fun onResume() {
         super.onResume()
+        // Unlocks earned offline go to RetroAchievements whenever the app comes back to the front
+        com.swordfish.lemuroid.app.tv.romm.OfflineAchievements.syncSoon(this)
         com.swordfish.lemuroid.app.tv.romm.Idle.touch()
     }
 

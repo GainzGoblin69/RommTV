@@ -182,6 +182,19 @@ class RetroAchievementsActivity : ComponentActivity() {
         val first = remember { FocusRequester() }
         LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
         Text("Signed in as ${current.username}", color = RommSignInActivity.TextColor, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        // Unlocks earned offline that haven't reached RetroAchievements yet
+        var pending by remember { mutableStateOf(OfflineAchievements.pendingCount(this@RetroAchievementsActivity)) }
+        Text(
+            if (pending == 0) {
+                "Offline play: games you've played once online also work offline (softcore). Unlocks are sent when you're back online."
+            } else {
+                "$pending unlock${if (pending == 1) "" else "s"} earned offline, waiting to be sent to RetroAchievements."
+            },
+            color = if (pending == 0) RommSignInActivity.Quiet else RommSignInActivity.Lime,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.width(760.dp),
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Tile(
                 if (current.enabled) "Achievements: On" else "Achievements: Off",
@@ -190,6 +203,23 @@ class RetroAchievementsActivity : ComponentActivity() {
                 RetroAchievementsAccount.setEnabled(this@RetroAchievementsActivity, !current.enabled)
                 account = RetroAchievementsAccount.load(this@RetroAchievementsActivity)
                 message = if (account?.enabled == true) "Achievements are on." else "Achievements are off. Games run without them."
+            }
+            if (pending > 0) {
+                Tile("Send offline unlocks now") {
+                    message = "Sending…"
+                    Thread {
+                        val result = OfflineAchievements.sync(applicationContext)
+                        runOnUiThread {
+                            pending = OfflineAchievements.pendingCount(this@RetroAchievementsActivity)
+                            message =
+                                when {
+                                    result.offline -> "Still offline. ${result.sent} sent, ${result.left} waiting."
+                                    result.dropped > 0 -> "Sent ${result.sent}. ${result.dropped} weren't accepted (the achievement changed)."
+                                    else -> "Sent ${result.sent} unlock${if (result.sent == 1) "" else "s"} to RetroAchievements."
+                                }
+                        }
+                    }.start()
+                }
             }
             Tile("Sign out") {
                 RetroAchievementsAccount.signOut(this@RetroAchievementsActivity)

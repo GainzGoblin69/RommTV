@@ -156,7 +156,8 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
         if (id > 0 && id in alreadyUnlocked) return
         if (id > 0) alreadyUnlocked = alreadyUnlocked + id
         AchievementSession.unlocked(activity.applicationContext, title)
-        show(Popup("ACHIEVEMENT UNLOCKED · $points POINTS", title, description, badgeUrl, true, 6), sound = true)
+        val label = if (RetroAchievements.playingOffline) "ACHIEVEMENT UNLOCKED · SAVED OFFLINE" else "ACHIEVEMENT UNLOCKED · $points POINTS"
+        show(Popup(label, title, description, badgeUrl, true, 6), sound = true)
     }
 
     override fun onMastered(
@@ -206,6 +207,19 @@ class AchievementPopups(private val activity: Activity) : RetroAchievements.List
             "processing" -> AchievementSession.step(c, "Checking achievements every frame")
             "disconnected" -> AchievementSession.log(c, "Lost connection to RetroAchievements")
             "reconnected" -> AchievementSession.log(c, "Connection back")
+            "offline" -> {
+                AchievementSession.step(c, "Playing offline: unlocks are saved and sent when you're back online")
+                show(
+                    Popup(
+                        "RETROACHIEVEMENTS · OFFLINE",
+                        "Playing offline",
+                        "Softcore unlocks are saved on this ${com.swordfish.lemuroid.lib.romm.Device.word} and sent to RetroAchievements next time you're online.",
+                        null,
+                        false,
+                        6,
+                    ),
+                )
+            }
         }
     }
 

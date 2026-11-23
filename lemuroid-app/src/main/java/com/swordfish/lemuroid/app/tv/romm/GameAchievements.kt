@@ -55,6 +55,9 @@ object GameAchievements {
         val file: File = (gameData.gameFiles as? RomFiles.Standard)?.files?.firstOrNull()
             ?: return skip("The game isn't a plain file on this device, so it can't be identified.")
 
+        // Offline play: keep this game's achievement data, and send any unlocks saved while offline
+        RetroAchievements.offlineDir = OfflineAchievements.dir(context)
+        OfflineAchievements.syncSoon(context)
         AchievementSession.begin(context, game.fileUri, game.title, "Signing in as ${account.username}…")
         AchievementSession.log(context, "Game file: ${file.name} (${file.length()} bytes), console #$console")
         runCatching {
