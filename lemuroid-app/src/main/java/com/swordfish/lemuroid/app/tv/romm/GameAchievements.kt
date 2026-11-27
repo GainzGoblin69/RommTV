@@ -24,6 +24,12 @@ object GameAchievements {
             SystemID.SEGACD -> 9
             SystemID.SMS -> 11
             SystemID.PSX -> 12
+            SystemID.DREAMCAST -> 40
+            SystemID.SATURN -> 39
+            SystemID.GAMECUBE -> 16
+            SystemID.WII -> 19
+            SystemID.NINTENDO_3DS -> 62
+            SystemID.DOS -> 156
             SystemID.LYNX -> 13
             SystemID.NGP, SystemID.NGC -> 14
             SystemID.GG -> 15

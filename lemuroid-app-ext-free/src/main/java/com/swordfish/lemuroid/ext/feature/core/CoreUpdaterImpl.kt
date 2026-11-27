@@ -45,6 +45,8 @@ class CoreUpdaterImpl(
     // This is the last tagged versions of cores.
     companion object {
         private const val CORES_VERSION = "1.17.0"
+
+        private val BUILDBOT_CORES = setOf(CoreID.FLYCAST, CoreID.YABASANSHIRO, CoreID.DOLPHIN)
     }
 
     private val baseUri = Uri.parse("https://github.com/Swordfish90/LemuroidCores/")
@@ -66,7 +68,42 @@ class CoreUpdaterImpl(
         context: Context,
         coreID: CoreID,
     ) {
-        findBundledLibrary(context, coreID) ?: downloadCoreFromGithub(coreID)
+        findBundledLibrary(context, coreID)
+            ?: if (coreID in BUILDBOT_CORES) downloadCoreFromBuildbot(coreID) else downloadCoreFromGithub(coreID)
+    }
+
+    /**
+     * Cores Lemuroid doesn't ship (Dreamcast, Saturn, GameCube/Wii) come from libretro's build server, the same
+     * place RetroArch gets them. Each is a zip holding one .so; kept under the same name scheme as the others.
+     */
+    private suspend fun downloadCoreFromBuildbot(coreID: CoreID): File {
+        val coresDirectory = File(directoriesManager.getCoresDirectory(), "buildbot").apply { mkdirs() }
+        val destFile = File(coresDirectory, coreID.libretroFileName)
+        if (destFile.exists() && destFile.length() > 0) return destFile
+
+        val abi = Build.SUPPORTED_ABIS.first()
+        val url = "https://buildbot.libretro.com/nightly/android/latest/$abi/${coreID.coreName}_libretro_android.so.zip"
+        Timber.i("Downloading core $coreID from $url")
+        try {
+            val response = api.downloadZip(url)
+            if (!response.isSuccessful) {
+                throw Exception("Couldn't download the ${coreID.coreDisplayName} emulator (HTTP ${response.code()})")
+            }
+            response.body()?.use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    if (!entry.isDirectory && entry.name.endsWith(".so")) {
+                        destFile.outputStream().use { zip.copyTo(it) }
+                        break
+                    }
+                }
+            }
+            if (!destFile.exists() || destFile.length() == 0L) throw Exception("The ${coreID.coreDisplayName} download was empty")
+            return destFile
+        } catch (e: Throwable) {
+            destFile.safeDelete()
+            throw e
+        }
     }
 
     private suspend fun retrieveAssets(
@@ -142,7 +179,7 @@ class CoreUpdaterImpl(
         applicationVersion: String,
     ) {
         mainCoresDirectory.listFiles()
-            ?.filter { it.name != applicationVersion }
+            ?.filter { it.name != applicationVersion && it.name != "buildbot" }
             ?.forEach { it.deleteRecursively() }
     }
 }

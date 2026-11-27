@@ -111,12 +111,30 @@ enum class CoreID(
         "DosBox Pure",
         "libdosbox_pure_libretro_android.so",
     ),
+
+    // These three come from libretro's own build server (see CoreUpdaterImpl)
+    FLYCAST(
+        "flycast",
+        "Flycast",
+        "libflycast_libretro_android.so",
+    ),
+    YABASANSHIRO(
+        "yabasanshiro",
+        "YabaSanshiro",
+        "libyabasanshiro_libretro_android.so",
+    ),
+    DOLPHIN(
+        "dolphin",
+        "Dolphin",
+        "libdolphin_libretro_android.so",
+    ),
     ;
 
     companion object {
         fun getAssetManager(coreID: CoreID): AssetsManager {
             return when (coreID) {
                 PPSSPP -> PPSSPPAssetsManager()
+                DOLPHIN -> com.swordfish.lemuroid.lib.core.assetsmanager.DolphinAssetsManager()
                 else -> NoAssetsManager()
             }
         }

@@ -96,6 +96,12 @@ object ConsoleControls {
                     L to "L", R to "R", SELECT to "Select", START to "Start",
                 )
             SystemID.PC_ENGINE -> buttons(A to "I", B to "II", SELECT to "Select", START to "Run")
+            SystemID.DREAMCAST ->
+                buttons(A to "A", B to "B", X to "X", Y to "Y", L2 to "L trigger", R2 to "R trigger", START to "Start")
+            SystemID.SATURN ->
+                buttons(Y to "A", B to "B", A to "C", X to "X", L to "Y", R to "Z", L2 to "L", R2 to "R", START to "Start")
+            SystemID.GAMECUBE ->
+                buttons(A to "A", B to "B", X to "X", Y to "Y", R to "Z", L2 to "L", R2 to "R", START to "Start")
             SystemID.ATARI2600 -> buttons(B to "Fire", SELECT to "Select", START to "Reset")
             SystemID.ATARI7800 -> buttons(B to "Left fire", A to "Right fire", SELECT to "Select", START to "Pause")
             SystemID.LYNX -> buttons(A to "A", B to "B", L to "Option 1", R to "Option 2", START to "Pause")

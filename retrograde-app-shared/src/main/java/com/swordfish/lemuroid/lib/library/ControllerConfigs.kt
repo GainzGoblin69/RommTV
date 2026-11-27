@@ -183,6 +183,36 @@ object ControllerConfigs {
                 ),
         )
 
+    /** Dreamcast, GameCube and Wii: face buttons, shoulders, triggers and both sticks. */
+    val MODERN_ANALOG =
+        ControllerConfig(
+            "default",
+            R.string.controller_default,
+            TouchControllerID.PSX_DUALSHOCK,
+            allowTouchRotation = true,
+            tiltConfigurations =
+                listOf(
+                    TILT_CONFIGURATION_DISABLED,
+                    TILT_CONFIGURATION_CROSS,
+                    TILT_CONFIGURATION_ANALOG_LEFT,
+                    TILT_CONFIGURATION_ANALOG_RIGHT,
+                ),
+        )
+
+    /** Saturn: six face buttons and two shoulders, like the Genesis six-button pad. */
+    val SATURN =
+        ControllerConfig(
+            "default",
+            R.string.controller_default,
+            TouchControllerID.GENESIS_6,
+            mergeDPADAndLeftStickEvents = true,
+            tiltConfigurations =
+                listOf(
+                    TILT_CONFIGURATION_DISABLED,
+                    TILT_CONFIGURATION_CROSS,
+                ),
+        )
+
     val PSP =
         ControllerConfig(
             "default",

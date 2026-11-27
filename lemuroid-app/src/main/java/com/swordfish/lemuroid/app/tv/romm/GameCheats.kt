@@ -41,6 +41,8 @@ object GameCheats {
             SystemID.SMS -> "Sega - Master System - Mark III"
             SystemID.GG -> "Sega - Game Gear"
             SystemID.PSX -> "Sony - PlayStation"
+            SystemID.DREAMCAST -> "Sega - Dreamcast"
+            SystemID.SATURN -> "Sega - Saturn"
             SystemID.PSP -> "Sony - PlayStation Portable"
             SystemID.PC_ENGINE -> "NEC - PC Engine - TurboGrafx 16"
             SystemID.LYNX -> "Atari - Lynx"

@@ -13,6 +13,9 @@ object Device {
     @Volatile
     private var tablet = false
 
+    @Volatile
+    private var powerful = false
+
     fun init(context: Context) {
         val app = context.applicationContext
         val uiMode = (app.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType
@@ -21,7 +24,16 @@ object Device {
             pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
             !pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
         tablet = app.resources.configuration.smallestScreenWidthDp >= 600
+        // Enough for GameCube, Wii and 3DS: a 64-bit chip and plenty of memory (phones yes, these TVs no)
+        val memory =
+            android.app.ActivityManager.MemoryInfo().also {
+                (app.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager)?.getMemoryInfo(it)
+            }.totalMem
+        powerful = android.os.Build.SUPPORTED_64_BIT_ABIS.isNotEmpty() && memory >= 5_500_000_000L
     }
+
+    /** Whether this device can run the heaviest consoles (GameCube, Wii, 3DS). */
+    val isPowerful: Boolean get() = powerful
 
     fun isTv(context: Context): Boolean {
         if (tv == null) init(context)

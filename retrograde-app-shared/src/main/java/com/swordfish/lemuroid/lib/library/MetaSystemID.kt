@@ -113,6 +113,26 @@ enum class MetaSystemID(val titleResId: Int, val imageResId: Int, val systemIDs:
         R.drawable.game_system_3ds,
         listOf(SystemID.NINTENDO_3DS),
     ),
+    DREAMCAST(
+        R.string.game_system_title_dc,
+        R.drawable.game_system_psx,
+        listOf(SystemID.DREAMCAST),
+    ),
+    SATURN(
+        R.string.game_system_title_saturn,
+        R.drawable.game_system_genesis,
+        listOf(SystemID.SATURN),
+    ),
+    GAMECUBE(
+        R.string.game_system_title_gc,
+        R.drawable.game_system_n64,
+        listOf(SystemID.GAMECUBE),
+    ),
+    WII(
+        R.string.game_system_title_wii,
+        R.drawable.game_system_n64,
+        listOf(SystemID.WII),
+    ),
     ;
 
     fun color(): Int {
@@ -147,6 +167,10 @@ enum class MetaSystemID(val titleResId: Int, val imageResId: Int, val systemIDs:
                 SystemID.WS -> WS
                 SystemID.WSC -> WS
                 SystemID.NINTENDO_3DS -> NINTENDO_3DS
+                SystemID.DREAMCAST -> DREAMCAST
+                SystemID.SATURN -> SATURN
+                SystemID.GAMECUBE -> GAMECUBE
+                SystemID.WII -> WII
             }
         }
     }

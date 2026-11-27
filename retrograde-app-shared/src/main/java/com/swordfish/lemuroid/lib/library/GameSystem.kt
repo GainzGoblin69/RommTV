@@ -1297,6 +1297,94 @@ data class GameSystem(
                     uniqueExtensions = listOf("3ds"),
                     hasTouchScreen = true,
                 ),
+                GameSystem(
+                    SystemID.DREAMCAST,
+                    "Sega - Dreamcast",
+                    R.string.game_system_title_dc,
+                    R.string.game_system_abbr_dc,
+                    listOf(
+                        SystemCoreConfig(
+                            CoreID.FLYCAST,
+                            controllerConfigs = hashMapOf(0 to arrayListOf(ControllerConfigs.MODERN_ANALOG)),
+                            defaultSettings =
+                                listOf(
+                                    // Works without a Dreamcast BIOS file (one in the BIOS folder is used if there)
+                                    CoreVariable("reicast_boot_to_bios", "disabled"),
+                                    CoreVariable("reicast_internal_resolution", "640x480"),
+                                ),
+                        ),
+                    ),
+                    uniqueExtensions = listOf("cdi", "gdi"),
+                    supportedExtensions = listOf("cdi", "gdi", "chd", "cue", "m3u"),
+                    scanOptions =
+                        ScanOptions(
+                            scanByFilename = false,
+                            scanByUniqueExtension = true,
+                            scanByPathAndSupportedExtensions = true,
+                        ),
+                    hasMultiDiskSupport = true,
+                ),
+                GameSystem(
+                    SystemID.SATURN,
+                    "Sega - Saturn",
+                    R.string.game_system_title_saturn,
+                    R.string.game_system_abbr_saturn,
+                    listOf(
+                        SystemCoreConfig(
+                            CoreID.YABASANSHIRO,
+                            controllerConfigs = hashMapOf(0 to arrayListOf(ControllerConfigs.SATURN)),
+                        ),
+                    ),
+                    uniqueExtensions = listOf(),
+                    supportedExtensions = listOf("chd", "cue", "iso", "ccd", "mds", "m3u"),
+                    scanOptions =
+                        ScanOptions(
+                            scanByFilename = false,
+                            scanByUniqueExtension = false,
+                            scanByPathAndSupportedExtensions = true,
+                        ),
+                    hasMultiDiskSupport = true,
+                ),
+                GameSystem(
+                    SystemID.GAMECUBE,
+                    "Nintendo - GameCube",
+                    R.string.game_system_title_gc,
+                    R.string.game_system_abbr_gc,
+                    listOf(
+                        SystemCoreConfig(
+                            CoreID.DOLPHIN,
+                            controllerConfigs = hashMapOf(0 to arrayListOf(ControllerConfigs.MODERN_ANALOG)),
+                        ),
+                    ),
+                    uniqueExtensions = listOf("gcm"),
+                    supportedExtensions = listOf("gcm", "iso", "rvz", "ciso", "gcz", "wia"),
+                    scanOptions =
+                        ScanOptions(
+                            scanByFilename = false,
+                            scanByUniqueExtension = true,
+                            scanByPathAndSupportedExtensions = true,
+                        ),
+                ),
+                GameSystem(
+                    SystemID.WII,
+                    "Nintendo - Wii",
+                    R.string.game_system_title_wii,
+                    R.string.game_system_abbr_wii,
+                    listOf(
+                        SystemCoreConfig(
+                            CoreID.DOLPHIN,
+                            controllerConfigs = hashMapOf(0 to arrayListOf(ControllerConfigs.MODERN_ANALOG)),
+                        ),
+                    ),
+                    uniqueExtensions = listOf("wbfs"),
+                    supportedExtensions = listOf("wbfs", "iso", "rvz", "ciso", "gcz", "wia"),
+                    scanOptions =
+                        ScanOptions(
+                            scanByFilename = false,
+                            scanByUniqueExtension = true,
+                            scanByPathAndSupportedExtensions = true,
+                        ),
+                ),
             )
 
         private val byIdCache by lazy { mapOf(*SYSTEMS.map { it.id.dbname to it }.toTypedArray()) }

@@ -4,7 +4,8 @@ import com.swordfish.lemuroid.lib.library.SystemID
 
 /**
  * Which RomM platforms this app can play, and with which built-in system.
- * Any platform not listed here is left out of the library (for example 3DS and DOS, too slow on a TV).
+ * Any platform not listed here is left out of the library. GameCube, Wii and 3DS only show on devices strong
+ * enough to run them (see [Device.isPowerful]).
  * Adding a system is one line: the RomM slug (or folder name) and the system it plays on.
  */
 object RommPlatforms {
@@ -20,6 +21,13 @@ object RommPlatforms {
             "gba" to SystemID.GBA,
             "n64" to SystemID.N64,
             "nds" to SystemID.NDS,
+            "3ds" to SystemID.NINTENDO_3DS,
+            "n3ds" to SystemID.NINTENDO_3DS,
+            "new-nintendo-3ds" to SystemID.NINTENDO_3DS,
+            "ngc" to SystemID.GAMECUBE,
+            "gamecube" to SystemID.GAMECUBE,
+            "gc" to SystemID.GAMECUBE,
+            "wii" to SystemID.WII,
             // Sega
             "genesis" to SystemID.GENESIS,
             "megadrive" to SystemID.GENESIS,
@@ -30,6 +38,10 @@ object RommPlatforms {
             "gg" to SystemID.GG,
             "segacd" to SystemID.SEGACD,
             "megacd" to SystemID.SEGACD,
+            "dc" to SystemID.DREAMCAST,
+            "dreamcast" to SystemID.DREAMCAST,
+            "saturn" to SystemID.SATURN,
+            "sega-saturn" to SystemID.SATURN,
             // Sony
             "psx" to SystemID.PSX,
             "ps" to SystemID.PSX,
@@ -63,14 +75,20 @@ object RommPlatforms {
             "mame" to SystemID.MAME2003PLUS,
             "mame2003" to SystemID.MAME2003PLUS,
             "mame-2003-plus" to SystemID.MAME2003PLUS,
+            // PC
+            "dos" to SystemID.DOS,
         )
+
+    private val HEAVY = setOf(SystemID.GAMECUBE, SystemID.WII, SystemID.NINTENDO_3DS)
 
     fun systemFor(
         slug: String?,
         fsSlug: String?,
     ): SystemID? {
-        slug?.lowercase()?.let { s -> bySlug[s]?.let { return it } }
-        fsSlug?.lowercase()?.let { s -> bySlug[s]?.let { return it } }
-        return null
+        val system =
+            slug?.lowercase()?.let { bySlug[it] }
+                ?: fsSlug?.lowercase()?.let { bySlug[it] }
+                ?: return null
+        return if (system in HEAVY && !Device.isPowerful) null else system
     }
 }

@@ -65,6 +65,10 @@ object ShaderChooser {
             SystemID.WS -> ShaderConfig.LCD
             SystemID.WSC -> ShaderConfig.LCD
             SystemID.NINTENDO_3DS -> ShaderConfig.LCD
+            SystemID.DREAMCAST -> ShaderConfig.Default
+            SystemID.SATURN -> ShaderConfig.CRT
+            SystemID.GAMECUBE -> ShaderConfig.Default
+            SystemID.WII -> ShaderConfig.Default
         }
     }
 
@@ -288,6 +292,10 @@ object ShaderChooser {
             SystemID.WS -> upscale16BitsMobile
             SystemID.WSC -> upscale16BitsMobile
             SystemID.NINTENDO_3DS -> modern
+            SystemID.DREAMCAST -> modern
+            SystemID.SATURN -> upscale32Bits
+            SystemID.GAMECUBE -> modern
+            SystemID.WII -> modern
         }
     }
 }
