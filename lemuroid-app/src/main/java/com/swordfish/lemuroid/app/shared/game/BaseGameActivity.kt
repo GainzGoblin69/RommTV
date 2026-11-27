@@ -127,8 +127,14 @@ abstract class BaseGameActivity : ImmersiveActivity() {
             }
         }
 
+        // Dual-screen devices: DS / 3DS games draw both screens stacked so each display gets one
+        com.swordfish.lemuroid.lib.core.CoreVariablesManager.overrides = { systemId, config ->
+            com.swordfish.lemuroid.app.tv.romm.SecondScreen.activeSplit(applicationContext, systemId, config)?.options.orEmpty()
+        }
+
         achievementPopups = com.swordfish.lemuroid.app.tv.romm.AchievementPopups(this).also { it.attach() }
         watchPlayers()
+        startSecondScreen()
         ScreenFilterPreview.apply = filterPreview
 
         lifecycleScope.launch {
@@ -441,7 +447,39 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         }
     }
 
+    private var secondScreen: com.swordfish.lemuroid.app.tv.romm.SecondScreenPresentation? = null
+
+    /** The second display (if there is one): the DS / 3DS bottom screen, or the companion (achievements, guide, sound). */
+    private fun startSecondScreen() {
+        lifecycleScope.launch {
+            val display = com.swordfish.lemuroid.app.tv.romm.SecondScreen.display(this@BaseGameActivity) ?: return@launch
+            val split = com.swordfish.lemuroid.app.tv.romm.SecondScreen.activeSplit(applicationContext, system.id, systemCoreConfig)
+            if (split == null && !com.swordfish.lemuroid.app.tv.romm.SecondScreen.companionEnabled(applicationContext)) return@launch
+            var view = baseGameScreenViewModel.retroGameView.retroGameView
+            while (view == null) {
+                delay(300)
+                if (isFinishing) return@launch
+                view = baseGameScreenViewModel.retroGameView.retroGameView
+            }
+            val retro = view ?: return@launch
+            split?.let { retro.setMainCrop(it.main) }
+            val presentation = com.swordfish.lemuroid.app.tv.romm.SecondScreenPresentation(this@BaseGameActivity, display, game, retro, split)
+            presentation.setOnDismissListener {
+                if (split != null) retro.setMainCrop(null)
+                if (secondScreen === presentation) secondScreen = null
+            }
+            runCatching { presentation.show() }
+                .onSuccess { secondScreen = presentation }
+                .onFailure {
+                    timber.log.Timber.w(it, "Second screen: couldn't show")
+                    if (split != null) retro.setMainCrop(null)
+                }
+        }
+    }
+
     override fun onDestroy() {
+        runCatching { secondScreen?.dismiss() }
+        secondScreen = null
         if (ScreenFilterPreview.apply === filterPreview) ScreenFilterPreview.apply = null
         com.swordfish.lemuroid.app.tv.romm.JohnnyMusic.stop()
         achievementPopups?.detach()

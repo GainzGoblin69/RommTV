@@ -18,6 +18,9 @@
 #include "videolayout.h"
 #include "log.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace libretrodroid {
 
 VideoLayout::VideoLayout(bool bottomLeftOrigin, float rotation, Rect viewportRect, unsigned int viewportAlignment) :
@@ -30,6 +33,7 @@ VideoLayout::VideoLayout(bool bottomLeftOrigin, float rotation, Rect viewportRec
 }
 
 void VideoLayout::updateBuffers() {
+    updateTextureCoordinates();
     updateForegroundVertices();
     updateBackgroundVertices();
     updateRelativeForegroundBounds();
@@ -50,7 +54,7 @@ void VideoLayout::updateForegroundVertices() {
     float screenW = screenWidth * viewportRect.getWidth();
     float screenH = screenHeight * viewportRect.getHeight();
     float screenAspect = screenW / screenH;
-    float contentAspect = aspectRatio;
+    float contentAspect = aspectRatio * crop.getWidth() / std::max(crop.getHeight(), 0.01F);
 
     float scaleX = viewportRect.getWidth();
     float scaleY = viewportRect.getHeight();
@@ -197,6 +201,28 @@ void VideoLayout::updateViewportAlignment(unsigned int viewportAlignment) {
     updateBuffers();
 }
 
+void VideoLayout::updateCrop(Rect crop) {
+    this->crop = crop;
+    updateBuffers();
+}
+
+std::array<float, 12> VideoLayout::textureCoordinatesFor(Rect part) const {
+    // Base quad corners (0/1). v = 0 is the picture's top for software frames and its bottom for
+    // GPU frames (bottom-left origin), so the vertical range flips with it.
+    static const float base[12] = { 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1 };
+    float vStart = bottomLeftOrigin ? 1.0F - (part.getY() + part.getHeight()) : part.getY();
+    std::array<float, 12> result {};
+    for (int i = 0; i < 12; i += 2) {
+        result[i] = part.getX() + base[i] * part.getWidth();
+        result[i + 1] = vStart + base[i + 1] * part.getHeight();
+    }
+    return result;
+}
+
+void VideoLayout::updateTextureCoordinates() {
+    textureCoordinates = textureCoordinatesFor(crop);
+}
+
 void VideoLayout::updateRotation(float rotation) {
     LOGD("Updated rotation to : %f", rotation);
 
@@ -223,8 +249,8 @@ std::pair<float, float> VideoLayout::getRelativePosition(float touchX, float tou
         return {-10.0f, -10.0f};
     }
 
-    float relativeX = (touchX - xMin) / (xMax - xMin);
-    float relativeY = (touchY - yMin) / (yMax - yMin);
+    float relativeX = crop.getX() + crop.getWidth() * (touchX - xMin) / (xMax - xMin);
+    float relativeY = crop.getY() + crop.getHeight() * (touchY - yMin) / (yMax - yMin);
 
     LOGD("Computed relative touch position: %.2f, %.2f", relativeX, relativeY);
 

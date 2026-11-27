@@ -51,6 +51,8 @@ public:
     void onStateLoaded();
     /** What RetroAchievements says you're doing right now ("rich presence"), or "" if there's nothing. */
     std::string richPresence();
+    /** The game's achievements as JSON (title, badge, unlocked, progress), or "" when no game is loaded. */
+    std::string achievementList();
 
     /** The core's memory map (RETRO_ENVIRONMENT_SET_MEMORY_MAPS). */
     void setMemoryMap(const struct retro_memory_map* map);

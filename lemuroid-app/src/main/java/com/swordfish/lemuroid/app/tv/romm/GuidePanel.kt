@@ -32,6 +32,8 @@ class GuidePanel(
     private val gameTitle: String,
     private val gameKey: String,
     private val systemId: String,
+    /** Where the views live: the activity, or a second screen's context. */
+    viewContext: android.content.Context = activity,
 ) {
     /** Called with a short line about what the guide is doing ("Section: 2. KREMWOOD FOREST"). */
     var onStatus: (String) -> Unit = {}
@@ -47,13 +49,13 @@ class GuidePanel(
         }
 
     /** Place names from RetroAchievements' description of where you are, best first. */
-    val suggestions: List<String> =
-        locationsIn(runCatching { com.swordfish.libretrodroid.RetroAchievements.richPresence() }.getOrDefault(""))
+    val suggestions: List<String>
+        get() = locationsIn(runCatching { com.swordfish.libretrodroid.RetroAchievements.richPresence() }.getOrDefault(""))
 
     // Mostly dark so the guide reads easily, with the paused game faintly visible behind it
-    val frame = FrameLayout(activity).apply { setBackgroundColor(SHADE); visibility = View.GONE }
+    val frame = FrameLayout(viewContext).apply { setBackgroundColor(SHADE); visibility = View.GONE }
     val web: WebView =
-        WebView(activity).apply {
+        WebView(viewContext).apply {
             setBackgroundColor(Color.TRANSPARENT)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -106,7 +108,7 @@ class GuidePanel(
 
     /** Hidden while pages load and while it finds the guide, so GameFAQs' pages never flash by. */
     private val loading =
-        android.widget.TextView(activity).apply {
+        android.widget.TextView(viewContext).apply {
             setTextColor(Color.rgb(167, 178, 194))
             textSize = 16f
             gravity = android.view.Gravity.CENTER
@@ -135,7 +137,7 @@ class GuidePanel(
 
     init {
         // A gap before the menu panel so lines don't run up against it
-        val gap = (32 * activity.resources.displayMetrics.density).toInt()
+        val gap = (32 * viewContext.resources.displayMetrics.density).toInt()
         frame.addView(
             web,
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT).apply {

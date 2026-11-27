@@ -15,7 +15,8 @@ class CoreVariablesManager(private val sharedPreferences: Lazy<SharedPreferences
     ): List<CoreVariable> {
         val defaultMap = convertCoreVariablesToMap(systemCoreConfig.defaultSettings)
         val coreVariables = retrieveCustomCoreVariables(systemID, systemCoreConfig)
-        val coreVariablesMap = defaultMap + convertCoreVariablesToMap(coreVariables)
+        val forced = overrides?.invoke(systemID, systemCoreConfig).orEmpty()
+        val coreVariablesMap = defaultMap + convertCoreVariablesToMap(coreVariables) + forced
         return convertMapToCoreVariables(coreVariablesMap)
     }
 
@@ -53,6 +54,10 @@ class CoreVariablesManager(private val sharedPreferences: Lazy<SharedPreferences
 
     companion object {
         private const val RETRO_OPTION_PREFIX = "cv"
+
+        /** Options the app forces for a game, over the defaults and your own (e.g. the DS screen layout for two screens). */
+        @Volatile
+        var overrides: ((SystemID, SystemCoreConfig) -> Map<String, String>)? = null
 
         fun computeSharedPreferenceKey(
             retroVariableName: String,

@@ -73,6 +73,28 @@ object JohnnyMusic {
 
     val isOn get() = on
 
+    /** The song playing now, as a readable name ("Artist - Song"), or null. */
+    @Volatile
+    var nowPlaying: String? = null
+        private set
+
+    /** Skips to another random song. */
+    fun skip(context: Context) {
+        if (!on) return
+        generation++
+        failures = 0
+        paused = false
+        release()
+        playNext(context.applicationContext, generation)
+    }
+
+    private fun readableName(url: String): String =
+        runCatching { java.net.URLDecoder.decode(url.substringBefore('?').substringAfterLast('/'), "UTF-8") }
+            .getOrDefault(url.substringAfterLast('/'))
+            .substringBeforeLast('.')
+            .replace('_', ' ')
+            .trim()
+
     fun setOn(
         context: Context,
         value: Boolean,
@@ -114,6 +136,7 @@ object JohnnyMusic {
     private fun release() {
         val p = player
         player = null
+        nowPlaying = null
         runCatching { p?.reset() }
         runCatching { p?.release() }
     }
@@ -132,6 +155,7 @@ object JohnnyMusic {
                     return@post
                 }
                 release()
+                nowPlaying = readableName(url)
                 runCatching {
                     val mp = MediaPlayer()
                     player = mp

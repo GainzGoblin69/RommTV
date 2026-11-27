@@ -109,6 +109,12 @@ object RetroAchievements {
     @JvmStatic
     private external fun nativeRichPresence(): String
 
+    /** The game's achievements as JSON ({game, total, unlocked, buckets:[{label, items:[...]}]}), or "" if none are loaded. */
+    fun achievementList(): String = runCatching { nativeAchievementList()?.toString(Charsets.UTF_8) }.getOrNull().orEmpty()
+
+    @JvmStatic
+    private external fun nativeAchievementList(): ByteArray?
+
     @JvmStatic
     private external fun nativeStart(
         userAgent: String,

@@ -22,6 +22,7 @@
 #include <cmath>
 #include <utility>
 #include <sstream>
+#include <algorithm>
 
 #include "log.h"
 
@@ -211,6 +212,68 @@ void Video::renderFrame() {
 
         glUseProgram(0);
     }
+}
+
+void Video::renderSecondary(unsigned width, unsigned height, Rect part) {
+    if (width == 0 || height == 0) return;
+
+    if (secondaryProgram == 0) {
+        static const char* vertex =
+            "attribute vec4 vPosition;\n"
+            "attribute vec2 vCoordinate;\n"
+            "varying vec2 coords;\n"
+            "void main() {\n"
+            "  coords = vCoordinate;\n"
+            "  gl_Position = vPosition;\n"
+            "}\n";
+        static const char* fragment =
+            "precision mediump float;\n"
+            "uniform sampler2D texture;\n"
+            "varying vec2 coords;\n"
+            "void main() {\n"
+            "  gl_FragColor = vec4(texture2D(texture, coords).rgb, 1.0);\n"
+            "}\n";
+        secondaryProgram = createProgram(vertex, fragment);
+        if (secondaryProgram == 0) return;
+        secondaryPosition = glGetAttribLocation(secondaryProgram, "vPosition");
+        secondaryCoordinate = glGetAttribLocation(secondaryProgram, "vCoordinate");
+        secondaryTexture = glGetUniformLocation(secondaryProgram, "texture");
+    }
+
+    glDisable(GL_DEPTH_TEST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, (GLsizei) width, (GLsizei) height);
+    glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // Fit the part into the surface, keeping its shape
+    float content = videoLayout.getAspectRatio() * part.getWidth() / std::max(part.getHeight(), 0.01F);
+    float screen = (float) width / (float) height;
+    float sx = 1.0F;
+    float sy = 1.0F;
+    if (content > screen) {
+        sy = screen / content;
+    } else {
+        sx = content / screen;
+    }
+    // Texture v = 0 is the picture's top, except for GPU frames where it's the bottom
+    float top = videoLayout.isBottomLeftOrigin() ? -sy : sy;
+    float vertices[12] = { -sx, top, -sx, -top, sx, top, sx, top, -sx, -top, sx, -top };
+    auto coordinates = videoLayout.textureCoordinatesFor(part);
+
+    glUseProgram(secondaryProgram);
+    glVertexAttribPointer(secondaryPosition, 2, GL_FLOAT, GL_FALSE, 0, vertices);
+    glEnableVertexAttribArray(secondaryPosition);
+    glVertexAttribPointer(secondaryCoordinate, 2, GL_FLOAT, GL_FALSE, 0, coordinates.data());
+    glEnableVertexAttribArray(secondaryCoordinate);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, renderer->getTexture());
+    glUniform1i(secondaryTexture, 0);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glDisableVertexAttribArray(secondaryPosition);
+    glDisableVertexAttribArray(secondaryCoordinate);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
 }
 
 float Video::getScreenDensity() {

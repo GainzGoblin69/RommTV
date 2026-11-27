@@ -42,6 +42,16 @@ public:
 
     void updateRotation(float rotation);
 
+    /** Shows only part of the picture (x, y, width, height as fractions, top-left origin). Used for one DS screen. */
+    void updateCrop(Rect crop);
+
+    /** Texture coordinates for another part of the picture, e.g. the DS bottom screen on a second display. */
+    std::array<float, 12> textureCoordinatesFor(Rect crop) const;
+
+    Rect getCrop() const { return crop; }
+    float getAspectRatio() const { return aspectRatio; }
+    bool isBottomLeftOrigin() const { return bottomLeftOrigin; }
+
     std::array<float, 12>& getForegroundVertices() { return foregroundVertices; }
     std::array<float, 12>& getBackgroundVertices() { return backgroundVertices; }
     std::array<float, 12>& getFramebufferVertices() { return framebufferVertices; }
@@ -62,6 +72,8 @@ private:
     void updateBackgroundVertices();
 
     void updateRelativeForegroundBounds();
+
+    void updateTextureCoordinates();
 
 private:
     std::array<float, 12> foregroundVertices = {
@@ -154,6 +166,7 @@ private:
     bool bottomLeftOrigin = false;
     float rotation = 0.0F;
     float aspectRatio = 1;
+    Rect crop = Rect(0.0F, 0.0F, 1.0F, 1.0F);
     Rect viewportRect = Rect(0.0F, 0.0F, 1.0F, 1.0F);
 
     unsigned screenWidth = 0;

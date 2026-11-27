@@ -108,6 +108,8 @@ public class LibretroDroid {
     public static native void step(GLRetroView retroView);
 
     public static native void redraw();
+    public static native void setCrop(float x, float y, float width, float height);
+    public static native void renderSecondary(int surfaceWidth, int surfaceHeight, float x, float y, float width, float height);
 
     public static native void reset();
 

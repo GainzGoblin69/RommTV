@@ -89,6 +89,9 @@ public:
         renderFrame();
     }
 
+    /** Draws part of the current picture to whatever surface is current (a second display), fitted to width x height. */
+    void renderSecondary(unsigned width, unsigned height, Rect part);
+
     bool rendersInVideoCallback() {
         return renderer->rendersInVideoCallback();
     }
@@ -118,6 +121,11 @@ private:
     VideoLayout videoLayout;
 
     Renderer* renderer;
+
+    GLuint secondaryProgram = 0;
+    GLint secondaryPosition = -1;
+    GLint secondaryCoordinate = -1;
+    GLint secondaryTexture = -1;
 };
 
 }

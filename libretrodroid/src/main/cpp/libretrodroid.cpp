@@ -219,6 +219,7 @@ void LibretroDroid::onSurfaceCreated() {
     );
 
     video = std::unique_ptr<Video>(newVideo);
+    video->getLayout().updateCrop(cropRect);
 
     if (Environment::getInstance().getHwContextReset() != nullptr) {
         Environment::getInstance().getHwContextReset()();
@@ -454,6 +455,21 @@ void LibretroDroid::redraw() {
     std::lock_guard<std::mutex> lock(coreLock);
     if (video) {
         video->redrawFrame();
+    }
+}
+
+void LibretroDroid::setCrop(Rect mainCrop) {
+    std::lock_guard<std::mutex> lock(coreLock);
+    cropRect = mainCrop;
+    if (video) {
+        video->getLayout().updateCrop(cropRect);
+    }
+}
+
+void LibretroDroid::renderSecondary(unsigned int width, unsigned int height, Rect part) {
+    std::lock_guard<std::mutex> lock(coreLock);
+    if (video) {
+        video->renderSecondary(width, height, part);
     }
 }
 

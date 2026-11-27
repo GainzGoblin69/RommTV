@@ -21,11 +21,14 @@ import android.app.ActivityManager
 import android.content.Context
 import android.graphics.PointF
 import android.graphics.RectF
+import android.opengl.EGL14
+import android.opengl.EGLSurface
 import android.opengl.GLSurfaceView
 import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.WindowManager
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleObserver
@@ -40,6 +43,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.properties.Delegates
@@ -76,6 +80,125 @@ class GLRetroView(
         renderMode = RENDERMODE_WHEN_DIRTY
         onResume()
         requestRender()
+    }
+
+    // ---- Two screens (e.g. the DS bottom screen on a dual-screen handheld's second display)
+
+    private class SecondaryTarget(val surface: Surface, @Volatile var width: Int, @Volatile var height: Int, val part: RectF) {
+        var egl: EGLSurface? = null
+        var failed = false
+    }
+
+    @Volatile
+    private var secondary: SecondaryTarget? = null
+
+    /** Shows only this part of the picture here (fractions, top-left origin); null shows all of it. */
+    @Volatile
+    private var mainCrop = RectF(0f, 0f, 1f, 1f)
+
+    fun setMainCrop(crop: RectF?) {
+        val c = RectF(crop ?: RectF(0f, 0f, 1f, 1f))
+        mainCrop = c
+        queueEvent { runCatching { LibretroDroid.setCrop(c.left, c.top, c.width(), c.height()) } }
+    }
+
+    /** Also draws `part` of the picture into another display's surface, every frame. */
+    fun attachSecondary(surface: Surface, width: Int, height: Int, part: RectF) {
+        detachSecondary()
+        secondary = SecondaryTarget(surface, width, height, RectF(part))
+    }
+
+    fun resizeSecondary(width: Int, height: Int) {
+        secondary?.let {
+            it.width = width
+            it.height = height
+        }
+    }
+
+    /** Stops drawing to the other surface. Waits (briefly) for the GL thread to let go of it. */
+    fun detachSecondary() {
+        val target = secondary ?: return
+        secondary = null
+        val done = CountDownLatch(1)
+        queueEvent {
+            runCatching {
+                target.egl?.let { EGL14.eglDestroySurface(EGL14.eglGetCurrentDisplay().takeIf { d -> d != EGL14.EGL_NO_DISPLAY } ?: EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY), it) }
+            }
+            target.egl = null
+            done.countDown()
+        }
+        runCatching { done.await(500, TimeUnit.MILLISECONDS) }
+    }
+
+    /** Where on the other surface the picture sits, so touches there can be passed to the game. */
+    fun secondaryTouch(x: Float, y: Float, released: Boolean) {
+        val target = secondary ?: return
+        if (released) {
+            sendMotionEvent(MOTION_SOURCE_POINTER, -10f, -10f)
+            return
+        }
+        val w = target.width.toFloat()
+        val h = target.height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val content = aspectRatioForSecondary * target.part.width() / target.part.height().coerceAtLeast(0.01f)
+        var fitW = w
+        var fitH = h
+        if (content > w / h) fitH = w / content else fitW = h * content
+        val fx = (x - (w - fitW) / 2f) / fitW
+        val fy = (y - (h - fitH) / 2f) / fitH
+        if (fx < 0f || fx > 1f || fy < 0f || fy > 1f) {
+            sendMotionEvent(MOTION_SOURCE_POINTER, -10f, -10f)
+            return
+        }
+        sendMotionEvent(MOTION_SOURCE_POINTER, target.part.left + fx * target.part.width(), target.part.top + fy * target.part.height())
+    }
+
+    /** The whole picture's shape (width / height), as the core reports it. */
+    var aspectRatioForSecondary: Float = 4f / 3f
+
+    // GL thread: after the main picture is drawn
+    private fun drawSecondary() {
+        val target = secondary ?: return
+        if (target.failed) return
+        val display = EGL14.eglGetCurrentDisplay()
+        val context = EGL14.eglGetCurrentContext()
+        if (display == EGL14.EGL_NO_DISPLAY || context == EGL14.EGL_NO_CONTEXT) return
+        val draw = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW)
+        val read = EGL14.eglGetCurrentSurface(EGL14.EGL_READ)
+        if (target.egl == null) {
+            val configId = IntArray(1)
+            EGL14.eglQueryContext(display, context, EGL14.EGL_CONFIG_ID, configId, 0)
+            val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
+            val count = IntArray(1)
+            val chosen =
+                EGL14.eglChooseConfig(display, intArrayOf(EGL14.EGL_CONFIG_ID, configId[0], EGL14.EGL_NONE), 0, configs, 0, 1, count, 0)
+            val config = configs[0]
+            if (!chosen || count[0] == 0 || config == null) {
+                target.failed = true
+                Log.e(TAG_LOG, "Second screen: no matching EGL config")
+                return
+            }
+            val surface = EGL14.eglCreateWindowSurface(display, config, target.surface, intArrayOf(EGL14.EGL_NONE), 0)
+            if (surface == null || surface == EGL14.EGL_NO_SURFACE) {
+                target.failed = true
+                Log.e(TAG_LOG, "Second screen: couldn't create the surface (0x${Integer.toHexString(EGL14.eglGetError())})")
+                return
+            }
+            target.egl = surface
+            if (EGL14.eglMakeCurrent(display, surface, surface, context)) {
+                EGL14.eglSwapInterval(display, 0)
+                EGL14.eglMakeCurrent(display, draw, read, context)
+            }
+        }
+        val surface = target.egl ?: return
+        if (!EGL14.eglMakeCurrent(display, surface, surface, context)) return
+        try {
+            val p = target.part
+            LibretroDroid.renderSecondary(target.width, target.height, p.left, p.top, p.width(), p.height())
+            EGL14.eglSwapBuffers(display, surface)
+        } finally {
+            EGL14.eglMakeCurrent(display, draw, read, context)
+        }
     }
 
     var viewport: RectF by Delegates.observable(RectF(0f, 0f, 1f, 1f)) { _, _, value ->
@@ -339,11 +462,13 @@ class GLRetroView(
         override fun onDrawFrame(gl: GL10) = catchExceptions {
             if (isEmulationReady) {
                 LibretroDroid.step(this@GLRetroView)
+                drawSecondary()
                 lifecycle?.coroutineScope?.launch {
                     retroGLEventsSubject.emit(GLRetroEvents.FrameRendered)
                 }
             } else if (previewing && isGameLoaded) {
                 LibretroDroid.redraw()
+                drawSecondary()
             }
         }
 
@@ -374,6 +499,8 @@ class GLRetroView(
             LibretroDroid.unserializeSRAM(data.saveRAMState)
             data.saveRAMState = null
         }
+        // Each game starts showing the whole picture unless told otherwise (the native side outlives games)
+        mainCrop.let { LibretroDroid.setCrop(it.left, it.top, it.width(), it.height()) }
         LibretroDroid.onSurfaceCreated()
         isGameLoaded = true
 

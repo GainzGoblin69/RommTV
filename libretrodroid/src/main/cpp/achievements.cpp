@@ -216,6 +216,86 @@ std::string Achievements::richPresence() {
     return std::string(buffer, length < sizeof(buffer) ? length : sizeof(buffer) - 1);
 }
 
+namespace {
+void appendJson(std::string& out, const char* text) {
+    out += '"';
+    if (text != nullptr) {
+        for (const char* c = text; *c; ++c) {
+            unsigned char ch = static_cast<unsigned char>(*c);
+            switch (ch) {
+                case '"': out += "\\\""; break;
+                case '\\': out += "\\\\"; break;
+                case '\n': out += "\\n"; break;
+                case '\r': out += "\\r"; break;
+                case '\t': out += "\\t"; break;
+                default:
+                    if (ch < 0x20) {
+                        char buf[8];
+                        snprintf(buf, sizeof(buf), "\\u%04x", ch);
+                        out += buf;
+                    } else {
+                        out += static_cast<char>(ch);
+                    }
+            }
+        }
+    }
+    out += '"';
+}
+}
+
+std::string Achievements::achievementList() {
+    std::lock_guard<std::recursive_mutex> guard(lock);
+    if (client == nullptr || !rc_client_is_game_loaded(client)) return "";
+    std::string out = "{";
+    const rc_client_game_t* game = rc_client_get_game_info(client);
+    out += "\"game\":";
+    appendJson(out, game ? game->title : "");
+    out += ",\"gameBadge\":";
+    appendJson(out, game ? game->badge_name : "");
+    rc_client_user_game_summary_t summary;
+    memset(&summary, 0, sizeof(summary));
+    rc_client_get_user_game_summary(client, &summary);
+    char numbers[160];
+    snprintf(numbers, sizeof(numbers), ",\"total\":%u,\"unlocked\":%u,\"points\":%u,\"pointsUnlocked\":%u",
+             summary.num_core_achievements, summary.num_unlocked_achievements, summary.points_core, summary.points_unlocked);
+    out += numbers;
+    out += ",\"buckets\":[";
+    rc_client_achievement_list_t* list = rc_client_create_achievement_list(
+        client, RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE, RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_PROGRESS);
+    if (list != nullptr) {
+        for (uint32_t b = 0; b < list->num_buckets; ++b) {
+            const rc_client_achievement_bucket_t& bucket = list->buckets[b];
+            if (b > 0) out += ',';
+            out += "{\"label\":";
+            appendJson(out, bucket.label);
+            char type[48];
+            snprintf(type, sizeof(type), ",\"type\":%u,\"items\":[", bucket.bucket_type);
+            out += type;
+            for (uint32_t i = 0; i < bucket.num_achievements; ++i) {
+                const rc_client_achievement_t* a = bucket.achievements[i];
+                if (i > 0) out += ',';
+                out += "{\"title\":";
+                appendJson(out, a->title);
+                out += ",\"description\":";
+                appendJson(out, a->description);
+                out += ",\"badge\":";
+                appendJson(out, a->badge_name);
+                out += ",\"progress\":";
+                appendJson(out, a->measured_progress);
+                char rest[160];
+                snprintf(rest, sizeof(rest), ",\"percent\":%.1f,\"id\":%u,\"points\":%u,\"unlocked\":%s,\"unlockTime\":%lld}",
+                         a->measured_percent, a->id, a->points, a->unlocked ? "true" : "false",
+                         static_cast<long long>(a->unlock_time));
+                out += rest;
+            }
+            out += "]}";
+        }
+        rc_client_destroy_achievement_list(list);
+    }
+    out += "]}";
+    return out;
+}
+
 void Achievements::idle() {
     std::lock_guard<std::recursive_mutex> guard(lock);
     if (client != nullptr) rc_client_idle(client);
@@ -400,6 +480,15 @@ JNIEXPORT jstring JNICALL Java_com_swordfish_libretrodroid_RetroAchievements_nat
 
 JNIEXPORT jstring JNICALL Java_com_swordfish_libretrodroid_RetroAchievements_nativeRichPresence(JNIEnv* env, jclass) {
     return env->NewStringUTF(Achievements::getInstance().richPresence().c_str());
+}
+
+JNIEXPORT jbyteArray JNICALL Java_com_swordfish_libretrodroid_RetroAchievements_nativeAchievementList(JNIEnv* env, jclass) {
+    std::string json = Achievements::getInstance().achievementList();
+    jbyteArray result = env->NewByteArray(static_cast<jsize>(json.size()));
+    if (result != nullptr && !json.empty()) {
+        env->SetByteArrayRegion(result, 0, static_cast<jsize>(json.size()), reinterpret_cast<const jbyte*>(json.data()));
+    }
+    return result;
 }
 
 JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_RetroAchievements_nativeStop(JNIEnv*, jclass) {

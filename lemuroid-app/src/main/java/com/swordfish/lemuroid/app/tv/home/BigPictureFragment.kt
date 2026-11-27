@@ -140,6 +140,9 @@ class BigPictureFragment : Fragment() {
     private var touchVibration by mutableStateOf("press")
 
     private var menuSounds by mutableStateOf(true)
+    private var secondCompanion by mutableStateOf(true)
+    private var secondDual by mutableStateOf(true)
+    private var hasSecondScreen by mutableStateOf(false)
 
     /** The RomM user this device is signed in as (devices only share saves when it's the same user). */
     private var rommUser by mutableStateOf<String?>(null)
@@ -227,6 +230,9 @@ class BigPictureFragment : Fragment() {
         if (next == Tab.SEARCH) loadSearchGames()
         if (next == Tab.SETTINGS) {
             menuSounds = UiSounds.isEnabled(requireContext())
+            hasSecondScreen = com.swordfish.lemuroid.app.tv.romm.SecondScreen.available(requireContext())
+            secondCompanion = com.swordfish.lemuroid.app.tv.romm.SecondScreen.companionEnabled(requireContext())
+            secondDual = com.swordfish.lemuroid.app.tv.romm.SecondScreen.dualEnabled(requireContext())
             val ctx = requireContext().applicationContext
             viewLifecycleOwner.lifecycleScope.launch {
                 rommUser =
@@ -1235,6 +1241,32 @@ class BigPictureFragment : Fragment() {
                     AppUpdater.checkInBackground(requireActivity(), viewLifecycleOwner.lifecycleScope)
                 },
             )
+        if (hasSecondScreen) {
+            val at = items.indexOfFirst { it.title == "Menu sounds" }.takeIf { it >= 0 } ?: items.size
+            items.addAll(
+                at,
+                listOf(
+                    SettingItem(
+                        "Second screen",
+                        if (secondCompanion) "Achievements, guide and sound" else "Off",
+                        "While you play, the second screen shows this game's achievements, the game guide, or sound " +
+                            "controls. Tap the tabs at the top of that screen to switch. Press to switch on or off.",
+                    ) {
+                        secondCompanion = !secondCompanion
+                        com.swordfish.lemuroid.app.tv.romm.SecondScreen.setCompanionEnabled(context, secondCompanion)
+                    },
+                    SettingItem(
+                        "DS & 3DS on two screens",
+                        if (secondDual) "On" else "Off",
+                        "Nintendo DS and 3DS games show their top screen here and the bottom (touch) screen on the second " +
+                            "display, like the real thing. Press to switch on or off; it applies when you start a game.",
+                    ) {
+                        secondDual = !secondDual
+                        com.swordfish.lemuroid.app.tv.romm.SecondScreen.setDualEnabled(context, secondDual)
+                    },
+                ),
+            )
+        }
         if (!com.swordfish.lemuroid.lib.romm.Device.isTv(context)) {
             items +=
                 SettingItem(

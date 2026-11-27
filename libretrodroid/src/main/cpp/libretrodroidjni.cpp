@@ -536,6 +536,38 @@ JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_redraw(
     }
 }
 
+JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setCrop(
+    JNIEnv* env,
+    jclass obj,
+    jfloat x,
+    jfloat y,
+    jfloat width,
+    jfloat height
+) {
+    try {
+        LibretroDroid::getInstance().setCrop(Rect(x, y, width, height));
+    } catch (std::exception &exception) {
+        LOGE("Error in setCrop: %s", exception.what());
+    }
+}
+
+JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_renderSecondary(
+    JNIEnv* env,
+    jclass obj,
+    jint surfaceWidth,
+    jint surfaceHeight,
+    jfloat x,
+    jfloat y,
+    jfloat width,
+    jfloat height
+) {
+    try {
+        LibretroDroid::getInstance().renderSecondary(surfaceWidth, surfaceHeight, Rect(x, y, width, height));
+    } catch (std::exception &exception) {
+        LOGE("Error in renderSecondary: %s", exception.what());
+    }
+}
+
 JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_step(
     JNIEnv* env,
     jclass obj,

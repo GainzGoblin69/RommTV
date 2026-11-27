@@ -96,6 +96,10 @@ public:
     void resume();
     void step();
     void redraw();
+
+    /** Two-screen mode: the main view shows only `mainCrop`; renderSecondary draws another part elsewhere. */
+    void setCrop(Rect mainCrop);
+    void renderSecondary(unsigned int width, unsigned int height, Rect part);
     void pause();
     void destroy();
 
@@ -169,6 +173,7 @@ private:
     };
 
     Rect viewportRect = Rect(0.0F, 0.0F, 1.0F, 1.0F);
+    Rect cropRect = Rect(0.0F, 0.0F, 1.0F, 1.0F);
     unsigned int viewportAlignment = V_ALIGN_CENTER;
     float screenRefreshRate = 60.0;
     int openglESVersion = 2;
