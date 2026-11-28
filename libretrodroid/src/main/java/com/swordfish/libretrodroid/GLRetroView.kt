@@ -251,6 +251,7 @@ class GLRetroView(
             getDeviceLanguage()
         )
         LibretroDroid.setRumbleEnabled(data.rumbleEventsEnabled)
+        LibretroDroid.setRunAhead(data.runAheadFrames)
         LibretroDroid.setViewportAlignment(data.viewportAlignment.value)
     }
 

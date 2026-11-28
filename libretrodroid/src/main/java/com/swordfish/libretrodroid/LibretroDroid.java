@@ -114,6 +114,9 @@ public class LibretroDroid {
     public static native void reset();
 
     public static native void setRumbleEnabled(boolean enabled);
+
+    // Frames to run ahead of what is shown (0 off, at most 2).
+    public static native void setRunAhead(int frames);
     public static native void setFrameSpeed(int speed);
     public static native void setAudioEnabled(boolean enabled);
     public static native void setShaderConfig(GLRetroShader shader);

@@ -31,6 +31,10 @@ class GLRetroViewData(context: Context) {
     var shader: ShaderConfig = ShaderConfig.Default
     var viewportAlignment = ViewportAlignment.CENTER
     var rumbleEventsEnabled: Boolean = true
+
+    // Frames to run ahead of what is shown, hiding a game's reaction delay
+    // (0 off). Doubles the emulation work: for light cores only.
+    var runAheadFrames: Int = 0
     var preferLowLatencyAudio: Boolean = true
     var skipDuplicateFrames: Boolean = false
     var enableMicrophone: Boolean = false

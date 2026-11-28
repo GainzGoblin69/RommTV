@@ -487,9 +487,15 @@ void LibretroDroid::step() {
     }
 
     for (size_t i = 0; i < frames * frameSpeed; i++) {
-        core->retro_run();
-        // RetroAchievements: check the game's memory once per emulated frame (fast-forwarded ones too)
-        Achievements::getInstance().doFrame(core.get());
+        // run-ahead only at normal speed, and only the last frame of a catch-up
+        bool ahead = runAheadFrames > 0 && frameSpeed == 1 && i + 1 == frames;
+        if (ahead) {
+            runFrameAhead();
+        } else {
+            core->retro_run();
+            // RetroAchievements: check the game's memory once per emulated frame (fast-forwarded ones too)
+            Achievements::getInstance().doFrame(core.get());
+        }
     }
 
     if (video && !video->rendersInVideoCallback()) {
@@ -521,6 +527,56 @@ void LibretroDroid::step() {
 
         video->updateRotation(Environment::getInstance().getScreenRotation());
     }
+}
+
+// One frame with run-ahead. The frame is run for real with this frame's
+// input: its sound is played, its picture is not. The game is saved, run on
+// runAheadFrames more frames with the same input (silently, showing only the
+// last one's picture), and put back. So what is seen is the game as it will be
+// a frame or two on, and a press shows that much sooner: most games take a
+// frame or two to react to one. A core that cannot save its state goes back
+// to running plainly.
+void LibretroDroid::runFrameAhead() {
+    size_t size = core->retro_serialize_size();
+    if (size == 0) {
+        // early in a game some cores have nothing to save yet: run it plainly
+        core->retro_run();
+        Achievements::getInstance().doFrame(core.get());
+        return;
+    }
+
+    runAheadHideVideo = true;
+    core->retro_run();
+    runAheadHideVideo = false;
+    Achievements::getInstance().doFrame(core.get()); // the real frame only
+
+    if (runAheadState.size() != size) runAheadState.resize(size);
+    if (!core->retro_serialize(runAheadState.data(), size)) {
+        // this frame goes unseen (the last one stays up); a core that keeps
+        // failing goes back to running plainly
+        if (++runAheadFailures >= 30) {
+            LOGE("Run-ahead turned off: this core cannot save its state every frame");
+            runAheadFrames = 0;
+        }
+        return;
+    }
+    runAheadFailures = 0;
+
+    runAheadMuteAudio = true;
+    for (unsigned k = 1; k <= runAheadFrames; k++) {
+        runAheadHideVideo = k < runAheadFrames;
+        core->retro_run();
+    }
+    runAheadHideVideo = false;
+    runAheadMuteAudio = false;
+
+    core->retro_unserialize(runAheadState.data(), size);
+}
+
+void LibretroDroid::setRunAhead(unsigned int frames) {
+    std::lock_guard<std::mutex> lock(coreLock);
+    runAheadFrames = std::min(frames, 2u);
+    runAheadFailures = 0;
 }
 
 float LibretroDroid::getAspectRatio() {
@@ -562,6 +618,7 @@ void LibretroDroid::handleVideoRefresh(
     unsigned int height,
     size_t pitch
 ) {
+    if (runAheadHideVideo) return; // a frame run only to look ahead from
     if (video) {
         video->onNewFrame(data, width, height, pitch);
 
@@ -572,7 +629,7 @@ void LibretroDroid::handleVideoRefresh(
 }
 
 size_t LibretroDroid::handleAudioCallback(const int16_t *data, size_t frames) {
-    if (audio && audioEnabled) {
+    if (audio && audioEnabled && !runAheadMuteAudio) {
         audio->write(data, frames);
     }
     return frames;

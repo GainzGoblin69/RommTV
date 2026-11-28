@@ -24,6 +24,9 @@ class SettingsManager(private val context: Context, sharedPreferences: Lazy<Shar
 
     suspend fun lowLatencyAudio() = booleanPreference(R.string.pref_key_low_latency_audio, false)
 
+    /** Run-ahead on the older consoles: on unless turned off. */
+    suspend fun runAhead() = booleanPreference(R.string.pref_key_run_ahead, true)
+
     suspend fun screenFilter() =
         stringPreference(
             R.string.pref_key_shader_filter,

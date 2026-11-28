@@ -599,6 +599,14 @@ JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setRumbleE
     LibretroDroid::getInstance().setRumbleEnabled(enabled);
 }
 
+JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setRunAhead(
+    JNIEnv* env,
+    jclass obj,
+    jint frames
+) {
+    LibretroDroid::getInstance().setRunAhead(frames < 0 ? 0 : (unsigned) frames);
+}
+
 JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setFrameSpeed(
     JNIEnv* env,
     jclass obj,

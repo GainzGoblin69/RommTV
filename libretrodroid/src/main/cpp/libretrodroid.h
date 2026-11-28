@@ -135,6 +135,11 @@ public:
 
     void setFrameSpeed(unsigned int speed);
 
+    // Run-ahead: each frame is shown from this many frames further on, hiding
+    // the frames a game takes to react to a press. 0 is off. For cores that
+    // draw in software and save state quickly; see step().
+    void setRunAhead(unsigned int frames);
+
     void setAudioEnabled(bool enabled);
 
     void setShaderConfig(ShaderManager::Config shaderConfig);
@@ -167,6 +172,14 @@ private:
     bool audioEnabled = true;
     bool preferLowLatencyAudio = false;
     bool rumbleEnabled = false;
+
+    // run-ahead (see step())
+    unsigned runAheadFrames = 0;
+    bool runAheadHideVideo = false;
+    bool runAheadMuteAudio = false;
+    std::vector<uint8_t> runAheadState;
+    unsigned runAheadFailures = 0;
+    void runFrameAhead();
 
     ShaderManager::Config fragmentShaderConfig = ShaderManager::Config {
         ShaderManager::Type::SHADER_DEFAULT, { }

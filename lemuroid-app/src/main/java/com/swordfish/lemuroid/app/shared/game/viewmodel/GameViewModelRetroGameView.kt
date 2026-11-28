@@ -22,6 +22,7 @@ import com.swordfish.lemuroid.lib.game.GameLoaderError
 import com.swordfish.lemuroid.lib.game.GameLoaderException
 import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.SystemCoreConfig
+import com.swordfish.lemuroid.lib.library.SystemID
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.storage.RomFiles
 import com.swordfish.libretrodroid.GLRetroView
@@ -95,6 +96,7 @@ class GameViewModelRetroGameView(
         val hdModeQuality = settingsManager.hdModeQuality()
         val alignment = settingsManager.viewportAlignment()
         val lowLatencyAudio = settingsManager.lowLatencyAudio()
+        val runAhead = settingsManager.runAhead()
         val enableRumble = settingsManager.enableRumble()
         val directLoad = settingsManager.allowDirectGameLoad()
         val enableImmersiveMode = settingsManager.enableImmersiveMode()
@@ -145,6 +147,7 @@ class GameViewModelRetroGameView(
                                 enableRumble,
                                 enableMicrophone,
                                 enableImmersiveMode,
+                                runAhead,
                             )
                         GameState.Loaded(
                             gameData = loadingState.gameData,
@@ -216,6 +219,7 @@ class GameViewModelRetroGameView(
         requestRumble: Boolean,
         requestMicrophone: Boolean,
         enableImmersiveMode: Boolean,
+        runAhead: Boolean = false,
     ): GLRetroViewData {
         return GLRetroViewData(appContext).apply {
             coreFilePath = gameData.coreLibrary
@@ -253,6 +257,10 @@ class GameViewModelRetroGameView(
             skipDuplicateFrames = systemCoreConfig.skipDuplicateFrames
             enableMicrophone = requestMicrophone
             immersiveMode = buildImmersiveModeConfiguration(enableImmersiveMode)
+            // a frame ahead on the older consoles, which are light enough to run
+            // twice a frame; the rest stay as they are
+            val systemId = SystemID.values().firstOrNull { it.dbname == gameData.game.systemId }
+            runAheadFrames = if (runAhead && systemId in RUN_AHEAD_SYSTEMS) 1 else 0
         }
     }
 
@@ -397,3 +405,27 @@ class GameViewModelRetroGameView(
         return message
     }
 }
+
+/**
+ * Systems light enough to emulate twice a frame on a TV box, for run-ahead:
+ * 8- and 16-bit consoles and handhelds. Not the 3D or CD-based ones, nor
+ * arcade, whose cores are heavier.
+ */
+private val RUN_AHEAD_SYSTEMS =
+    setOf(
+        SystemID.NES,
+        SystemID.SNES,
+        SystemID.GENESIS,
+        SystemID.SMS,
+        SystemID.GG,
+        SystemID.GB,
+        SystemID.GBC,
+        SystemID.GBA,
+        SystemID.PC_ENGINE,
+        SystemID.ATARI2600,
+        SystemID.ATARI7800,
+        SystemID.LYNX,
+        SystemID.NGP,
+        SystemID.WS,
+        SystemID.WSC,
+    )

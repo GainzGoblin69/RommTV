@@ -68,6 +68,8 @@
     <string name="settings_description_advanced_settings">Display advanced settings</string>
     <string name="settings_title_low_latency_audio">Prefer low-latency audio</string>
     <string name="settings_description_low_latency_audio">Reduce audio latency on supported devices. Might increase audio glitches.</string>
+    <string name="settings_title_run_ahead">Run-ahead (older consoles)</string>
+    <string name="settings_description_run_ahead">Shows NES, SNES, Genesis, Game Boy and other older consoles a frame ahead, so the game reacts to a press sooner. Uses more of the TV box\'s power.</string>
 
     <string name="settings_title_direct_game_load">Direct game load</string>
     <string name="settings_description_direct_game_load">(Experimental) Reduce loading time and cache usage on supported consoles.</string>
