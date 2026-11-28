@@ -3,6 +3,7 @@ package com.swordfish.lemuroid.app.shared.game
 import android.app.Activity
 import android.content.Intent
 import android.content.SharedPreferences
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -91,6 +92,13 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // While a game is on screen, ask the TV for its game mode: no picture
+        // processing, which can add tens of milliseconds between a press and
+        // seeing it. TVs that switch modes by themselves (ALLM) do so now, and
+        // switch back when the game closes.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setPreferMinimalPostProcessing(true)
+        }
         setUpExceptionsHandler()
         GameService.startService(applicationContext, intent)
         game = intent.getSerializableExtra(EXTRA_GAME) as Game
